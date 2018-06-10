@@ -1,0 +1,131 @@
+halt_poll_ns: (默认值200000 ns)
+halt_poll_ns_grow
+halt_poll_ns_shrink
+    每个vCPU都有一个halt_poll_ns属性,vCPU执行HLT指令主动放弃使用权后
+    KVM轮询vCPU唤醒条件,halt_poll_ns时长。
+    根据释放结果和halt_poll_ns_grow、halt_poll_ns_shrink两个值更新下一次
+    halt_poll_ns。轮询超时后才把CPU让给调度程序。
+    这在唤醒时间非常短的工作负载上特别有用。
+    1. 较大值使cpu使用率提高到100％,否则CPU几乎完全处于idle。
+    2. halt_poll本质上是在功耗和等待时间之间进行权衡
+    3. 仅当主机上没有其他可在该CPU上运行的任务时才由主机执行暂停轮询，
+       否则，轮询将立即停止。
+    参考： Halt-polling.txt
+    可尝试，长时间轮询，QOS
+
+
+
+kvmclock_periodic_sync
+min_timer_period_us
+tsc_tolerance_ppm
+
+ignore_msrs: (默认值 0，不忽略MSR)
+    KVM定制MSR访问范围： 0x4b564d00 to 0x4b564dff.
+    参考： msr.txt
+    
+lapic_timer_advance_ns
+mmu_audit
+vector_hashing
+
+
+
+源码分析：
+kvm_main.c
+    kvm_init
+     |  数据结构：
+     |      kvm_chardev_ops     对应kvm_fd = open('/dev/kvm')
+     |      kvm_vm_fops         对应vm_fd = ioctl(kvm_fd, KVM_CREATE_VM, arg);
+     |                          mmap(vm_fd) 访问VM的物理地址空间
+     |      kvm_vcpu_fops       对应vcpu_fd = ioctl(vm_fd, KVM_CREATE_VCPU, arg);
+     |      kvm_syscore_ops     宿主机休眠唤醒时调用kvm_syscore_ops接口。驱动关注可以实现钩子函数并注册。
+     |      kvm_preempt_ops     vCPU被抢抢占和还原时调用kvm_preempt_ops，不同架构有不同的kvm_preempt_ops实现。
+     |
+     |
+     |---kvm_arch_init('arm'|'x86')  KVM支持多种不同架构的CPU，
+     |                               每个架构都支持不同的OPS,例如：kvm_x86_ops
+     |
+     |---kvm_irqfd_init()
+     |
+     |
+     |---kvm_arch_hardware_setupp()
+     |
+     |
+     |---kvm_async_pf_init()
+     |
+     |
+     |---kvm_init_debug()
+     |
+     |
+     |---kvm_vfio_ops_init()
+     |done!
+     
+VM运行过程：
+    qemu
+     |  kvm_fd = open('/dev/kvm')
+     |  vm_fd = ioctl(kvm_fd, KVM_CREATE_VM, arg);
+     |  vcpu1_fd = ioctl(vm_fd, KVM_CREATE_VCPU, arg);
+     |  vcpu2_fd = ioctl(vm_fd, KVM_CREATE_VCPU, arg);
+     |  thread1::while(1) {
+     |      ioctl(vcpu1_fd, KVM_RUN);
+     |      switch(exit-reason) {
+     |          EXIT-IO: todo;
+     |          EXIT-MMIO: todo;
+     |      }
+     |  }
+     |  thread2::while(1) {
+     |      ioctl(vcpu2_fd, KVM_RUN);
+     |      switch(exit-reason) {
+     |          EXIT-IO: todo;
+     |          EXIT-MMIO: todo;
+     |      }
+     |  }
+ioctl(system_fd, KVM_GET_API_VERSION)       #linux 2.6后固定返回12
+ioctl(system_fd, KVM_CREATE_VM， KVM_VM_*)  #创建一个没用vcpu和内存的VM，返回vm_fd
+ioctl(system_fd, KVM_CHECK_EXTENSION, KVM_CAP_*)
+ioctl(vm_fd, KVM_CHECK_EXTENSION, KVM_CAP_*)
+                                            #检测某个特性是否支持
+ioctl(system_fd, KVM_GET_VCPU_MMAP_SIZE)    #获取mmap(vcpu_fd, size)大小
+ioctl(vm_fd, KVM_CREATE_VCPU, vcpu-id)      #创建一个vCPU
+ioctl(vm_fd, KVM_GET_DIRTY_LOG, &struct kvm_dirty_log)
+                                            #给定一个mem-slot,返回该连续内存的脏页位图
+ioctl(vcpu_fd, KVM_RUN);                    #让vCPU运行guest代码,然后成功或者失败
+                                            #实际参数通过mmap(vcpu_fd)的struct kvm_run结构传递
+ioctl(vcpu_fd, KVM_SET_SIGNAL_MASK, &struct kvm_signal_mask);
+                                            #设置KVM_RUN期间屏蔽哪些信号。(except SIGKILL and SIGSTOP不可忽略)
+                                            #默认情况一些信号可能可能导致KVM_RUN返回-EINTR.
+ioctl(vcpu_fd, KVM_GET_REGS, &struct kvm_regs);
+ioctl(vcpu_fd, KVM_SET_REGS, &struct kvm_regs);
+                                            #获取或设置VCPU当前通用寄存器的值
+ioctl(vcpu_fd, KVM_GET_SREGS, &struct kvm_sregs);
+ioctl(vcpu_fd, KVM_SET_SREGS, &struct kvm_sregs);
+                                            #获取或设置VCPU当前特殊寄存器的值
+ioctl(vcpu_fd, KVM_TRANSLATE, &struct kvm_translation);
+                                            #传入虚拟机的虚拟地址GVA，传出真实的物理地址HPA
+ioctl(vcpu_fd, KVM_INTERRUPT, irq_number);  #用户空间向vCPU注入一个中断请求
+ioctl(system_fd, KVM_GET_MSR_INDEX_LIST, &struct kvm_msr_list)
+ioctl(system_fd, KVM_GET_MSR_FEATURE_INDEX_LIST, &struct kvm_msr_list)
+                                            #返回KVM支持虚拟化的MSRs（意味着可以传递给KVM_GET_MSRS）
+ioctl(system_fd, KVM_GET_MSRS, &struct kvm_msrs);
+                                            #只能获取可用于VM的MSR列表（KVM_GET_MSR_INDEX_LIST返回）。
+                                            #返回具体的值
+ioctl(vcpu_fd, KVM_GET_MSRS, &struct kvm_msrs);
+ioctl(vcpu_fd, KVM_SET_MSRS) &struct kvm_msrs);
+                                            #同上，获取或设置VCPU当前MSR寄存器的值
+ioctl(vcpu_fd, KVM_SET_CPUID) &struct kvm_cpuid);
+ioctl(vcpu_fd, KVM_SET_CPUID2) &struct kvm_cpuid);
+                                            #设置vCPU标识
+ioctl(vcpu_fd, KVM_GET_FPU) &struct kvm_fpu);
+ioctl(vcpu_fd, KVM_SET_FPU) &struct kvm_fpu);
+                                            #获取或设置fpu状态
+ioctl(vm_fd, KVM_CREATE_IRQCHIP));          #创建in-kernel的中断控制器，其中包括
+                                            # 创建一个ioapci，并标识将来vCPU有lapic特性
+                                            # 创建一个virtual PIC (two PICs, nested)
+                                            # GSIs 0-15 routing to both PIC and IOAPIC
+                                            # GSIs 16-23 only go to the IOAPIC.
+ioctl(vcpu_fd, KVM_SET_FPU) &struct kvm_fpu);
+                                            #获取或设置fpu状态
+                                            
+
+KVM_SET_MEMORY_REGION   已被删除
+KVM_SET_MEMORY_ALIAS    已被删除
+KVM_DEBUG_GUEST         已被删除

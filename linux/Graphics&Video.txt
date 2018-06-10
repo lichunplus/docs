@@ -1,0 +1,10 @@
+术语：
+中断：提供一种打断CPU顺序执行的机制
+APIC: Advanced Programmable Interrupt Controller
+中断源：表示中断CPU运行的直接来源，比如各个IRQ#N（中断控制器发出）、IPI、REST等
+PRT: Programmable Redirection Table
+NMI：Non-Maskable Interrupt
+一、历史
+1. MDA/CGA: 设备不提供VideoBIOS,由系统BIOS提供驱动。已淘汰
+2. EGA/VGA: 在设备的ROM中提供了VideoBIOS和基本字符集,在设备驱动加载前，VideoBIOS
+            提供了Int 10h中断用于驱动图形和视频的基本输出。

@@ -1,0 +1,69 @@
+术语：
+时钟：为现代操作系统提供计时器功能并驱动系统运行。
+时钟源：提供时钟的设备，操作系统可能同时使用多个时钟源。
+RTC: Real Time Clock
+
+一、时钟设备(PIT(8254)|RTC|TSC|LAPIC Timer)
+PIT(8254):
+    频率：1000HZ
+    位数：16位
+    物理连接：使用中断源IRQ0（中断优先级最高）
+              通过IO端口（0x40~0x43）进行编程控制
+    特定：精度低，已被淘汰
+    
+RTC(Real Time Clock,实时时钟):
+    频率：2~8192HZ
+    位数：？？？？？？？？？？？？
+    物理连接：使用中断源IRQ8
+              通过IO端口（0x70~0x71）进行编程控制
+    特定：由主板电池供电，所以常被用于向系统提供日期。
+    
+TSC(Time Stamp Counter,时间戳计数器):
+    频率：和CPU频率相关频率极高
+    位数：64位
+    物理连接：CPU内部，不产生中断
+    特定：操作系统通过rdtsc指令主动查询，不产生中断。
+
+LAPIC Timer:
+    频率：system-bus或者apic-bus总线频率
+    位数：32位
+    物理连接：CPU内部，使用中断源LOC
+    特定：中断是对本地CPU（LAPCI归属的CPU）的中断
+    
+HPET(High Precision Event Timer,高精度时间时钟):
+    频率：最低为10MHz
+    位数：32位或者64位
+    物理连接：
+    特定：一个HPET设备可以最多提供8个独立的时钟，每个时钟又被配置成32个子时钟。
+          每个子时钟(chnnael)可以按不同频率产生中断。每个子时钟使用一个中断源IRQ
+          HPET用于替代PIT和RTC（此时IRQ0和IRQ8被HPET使用）。
+          
+二、linux系统时钟
+linux系统实际上使用两个时钟：
+1. 电池供电的"实时时钟"("RTC", "CMOS clock", or "Hardware clock")
+   实时时钟跟踪系统关闭后的时间更新，在系统运行期间RTC是不使用的。
+2. 系统时钟("system clock", "kernel clock" or "software clock")
+    查看#cat /sys/devices/system/clocksource/clocksource0/available_clocksource
+        #cat /sys/devices/system/clocksource/clocksource0/current_clocksource
+        
+三、操作系统请求的时钟频率
+windows:  通常请求64~100HZ，具体取决于使用哪中HAL(???),windows允许应用程序将
+          系统时钟提高到1024HZ。windows没有提供查询当前系统时钟频率的方法。
+          VMWARE提供TimeTrackerStats工具确定当前系统时钟频率。
+        
+linux:
+
+
+四、Hyper-V
+QEMU支持相关参数：
+-cpu ...,hv_time,
+        hv_relaxed,
+        hv_vapic,
+        hv_spinlocks=0x1fff,
+        hv_vpindex,
+        hv_synic,
+        hv_stimer,
+        hv_vendor_id=KVM
+QEMU/KVM推荐： -cpu ...,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time
+
+

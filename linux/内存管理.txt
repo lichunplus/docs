@@ -1,0 +1,23 @@
+1. 进程内存分配
+C库提供、、realloc用于内存空间，最大分配size_t值。
+    malloc：仅分配虚拟地址空间
+    calloc：标记是否初始化为0，初始化为0时可能会分配部分页帧
+    realloc：原空间保持不变，新空间同malloc
+linux提供
+    int fd = memfd_create();用于创建memfd,fd的后端是内存。
+    
+    
+    
+2. 查看进程地址映射
+total值显示这个进程虚拟地址已经映射的空间总和（SWAP也在anon内）。
+2101380K约等于RES+SWAP(top命令阅读)
+[root@centos ~]# pmap -p 97163
+97163:   ./a.out
+0000000000400000      4K r-x-- /opt/a.out
+00007f6d97fe1000 2097160K rw---   [ anon ]
+00007f6e17fe3000   4804K r-x-- /usr/lib64/libc-2.17.so
+00007f6e183b1000    136K r-x-- /usr/lib64/ld-2.17.so
+00007f6e185d4000      4K rw---   [ anon ]
+00007ffe26cd0000    132K rw---   [ stack ]
+ total          2101380K
+

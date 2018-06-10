@@ -1,0 +1,35 @@
+一、vhost、vhost-user和virtio设备层级关系:
+
+virtio-device
+    |
+    |----virtio-blk
+    |
+    |----virtio-gpu
+    |
+    |----...
+    |
+    |----virtio-scsi-common
+    |        |
+             |----virtio-scsi
+             |
+             |----vhost-scsi-common
+                    |
+                    |----vhost-scsi(设备由内核仿真)
+                    |
+                    |----vhost-user-scsi(设备由spdk进程仿真)
+                    |
+                    |
+二、vhost-user-scsi设备私有属性:
+chardev=      指定字符设备用于和vhost进程通过vhost协议交互
+boot_tpgt=0   target portal group tag
+              iSCSI initiator和iSCSI target之间的session用SSID进行标识
+              该标识由initiator部分的ISID和target部分的TPGT构成。
+num_queues=1  cmd vhost_virtqueue个数,实际还要多用两个ctrl_vq和event_vq两个VQ
+virtqueue_size=128  以上每个VQ都有相同的长度,必须小于1024
+max_sectors=0xFFFF  一次最大读取少数个扇区
+cmd_per_lun=128     ？？？貌似未使用到
+hotplug=true        配置SCSI设备是否支持热插拔，SCSI设备特性
+param_change=true   ，SCSI设备特性
+watch=false   监听chardev连接，激活后连接断开会主动暂停虚机
+
+

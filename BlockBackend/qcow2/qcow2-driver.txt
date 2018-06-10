@@ -1,0 +1,81 @@
+== Snapshot table ==
+BDRVQcow2State:
+    cluster_bits    
+    cluster_bits        int(9~21)   HEADER.cluster_bits           16
+    cluster_size        int         1 << s->cluster_bits          65536
+    cluster_sectors     int         1 << (s->cluster_bits - 9)    一个cluster有多少个512字节的扇区
+    l2_bits             int         s->cluster_bits - 3           L2 is always one cluster
+                                                                  L2 Entry长度固定8个字节
+    l2_size             int         1 << s->l2_bits               一张L2 table(one cluster)有多少个entry
+    l1_size             int         HEADER.l1_size                一张L1 table(many clusters)有多少个entry
+    l1_vm_state_index   int                                        ??????????????????????
+    
+    refcount_block_bits int        cluster_bits-(refcount_order-3) 其中(refcount_order-3)表示refcount width in bytes
+    refcount_block_size int        1 << s->refcount_block_bits     一张refcount block有多少个entry
+    
+    csize_shift                          ??????????????????????
+    csize_mask                           ??????????????????????
+    
+    cluster_offset_mask uint64_t                                   ??????????????????????
+    l1_table_offset     uint64_t   HEADER.l1_table_offset            3#cluster
+    l1_table            uint64_t*  l1_table=VirtualAlloc(l1_size*8)  指向内存中的l1 table
+    
+    l2_table_cache          Qcow2Cache*     ??????
+    refcount_block_cache    Qcow2Cache*     ??????
+    cache_clean_timer       QEMUTimer*      >>aio_timer_new(QEMU_CLOCK_VIRTUAL,cache_clean_timer_cb),每秒钟唤醒一次
+    cache_clean_interval    unsigned        启动参数cache-clean-interval配置，设置timer周期性唤醒，默认关闭
+    
+    cluster_cache           uint8_t*    用于压缩
+    cluster_data            uint8_t*    用于加密
+    cluster_cache_offset    uint64_t
+    cluster_allocs          QLIST_HEAD(QCowClusterAlloc,QCowL2Meta)，类型QCowL2Meta数据的链表
+    
+    refcount_table          uint64_t*   HEADER.crypt_method
+    refcount_table_offset   uint64_t    HEADER.refcount_table_offset
+    refcount_table_size     uint32_t    HEADER.refcount_table_clusters<<(s->cluster_bits-3)条目数
+    free_cluster_index      uint64_t    ？？？？
+    free_byte_offset        uint64_t    ？？？？
+    
+    lock                CoMutex             
+    cipher              QCryptoCipher*      密码结构
+    crypt_method_header uint32_t            
+    snapshots_offset    uint64_t            HEADER.snapshots_offset
+    nb_snapshots        unsigned int        HEADER.nb_snapshots;快照个数
+    snapshots           QCowSnapshot*       >>g_new0(QCowSnapshot, s->nb_snapshots),数组形式
+    snapshots_size      int                 内存快照表snapshots[nb_snapshots]总字节数
+    
+    flags                   int     保存flag标识
+    qcow_version            int     HEADER.version 一般是3
+    use_lazy_refcounts      bool    启动参数lazy-refcounts指定
+    refcount_order          int     HEADER.refcount_order(默认4)
+    refcount_bits           int     1<<refcount_order
+    refcount_max            uint64_t refcount的最大值
+    
+    get_refcount    Qcow2GetRefcountFunc*   根据s->refcount_order(0~6)选择对应get函数
+    set_refcount    Qcow2GetRefcountFunc*   根据s->refcount_order(0~6)选择对应set函数
+    
+    discard_passthrough boot型数组 有5种discard类型{NEVER|ALWAYS=1|REQUEST|SNAPSHOT|OTHER} 启动参数可以分配配置
+                                   其中三种开关pass-discard-request、pass-discard-snapshot、pass-discard-other
+    
+    
+    overlap_check           表示在write_overlap_check()中检查哪些项，提供了几个典型配置模板
+                            通过启动参数(overlap-check={none|constant|cached|all})指定
+                            模板是{HEADER|L1|L2|REFCOUNT_TABLE|REFCOUNT_BLOCK|SNAPSHOT_TABLE|INACTIVE_L1|INACTIVE_L2}子集
+                            
+    signaled_corruption     bool    当write_overlap_check()检查到异常时，会标记signaled_corruption=true,禁止驱动范围
+    
+    
+    incompatible_featurerespectivelys  uint64_t  HEADER.incompatible_features
+    compatible_features    uint64_t  HEADER.compatible_features
+    autoclear_features     uint64_t  HEADER.autoclear_features
+    
+    unknown_header_fields_size    size_t    HEADER.header_length-sizeof(QCowHeader)，一般是0
+    unknown_header_fields         void*     指向HEADER.header_length比QCowHeader多的部分的副本
+    unknown_header_ext            QLIST_HEAD(Qcow2UnknownHeaderExtension)   一个镜像可能存在多个不同类型的HeaderExtension
+    
+    discards            QTAILQ_HEAD(Qcow2DiscardRegion)           Qcow2DiscardRegion表示一个discard的vio
+    cache_discards      bool                                      是否执行discards队列中的请求
+    
+    image_backing_file   char*    >>bs->backing_file[PATH_MAX] from HEADER       "/opt/test.img"
+    image_backing_format char*    >>bs->backing_format[PATH_MAX] from HEADER.ext ""
+    

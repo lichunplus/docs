@@ -1,0 +1,180 @@
+术语：
+UIO: the userspace I/O system, 一个最通用的用户态设备驱动框架（不依赖VT-d等硬件）
+VFIO(Virtual Function I/O)：现代系统(VT-d|AMD-Vi)提供DMA和中断重映射功能，VFIO是
+                            该功能的驱动程序，允许用户空间程序直接驱动设备。
+    
+一、UIO、
+用户空间接口：用户空间通过如下两个文件访问一个UIO设备。
+    1. 设备文件(/dev/uioN)
+        地址空间：通过mmap设备文件描述符访问设备地址空间（register or ram）
+        中断：通过read或select读取设备总中断次数，返回整形数字
+              通过write,写入0或者1来关闭或者激活中断。用于某些有多个中断源的设备
+                        同时，禁用中断后，你必须提供内核模块，用于处理中断。
+    2. 几个sysfs文件（/sys/class/uio/uioX目录）
+           name：设备名称
+           version：驱动程序版本
+           event：累计处理中断总数
+           maps/mapN/：某些工业I/O卡需要访问驱动程序中的多个PCI内存区域。
+                name：字符串标识此内存区域，允许为空
+                addr：起始地址
+                size: 大小，单位字节
+                offset：mmap()返回的地址始终是页面对齐的，需要便宜offset字节
+           portio/portX/
+                name：字符串标识
+                start：起始端口
+                size：端口数量
+                porttype：字符串，描述端口类型
+     3. 库函数libpci，是上面两个接口的封装。
+内核驱动实现（"uio_pci_generic"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于PCI
+    总线上的设备（遵循PCI 2.3或者PCIE规范）。
+   #modprobe uio_pci_generic
+   #驱动程序(uio_pci_generic)声明支持驱动设备(8086 10f5)
+   #echo "8086 10f5" > /sys/bus/pci/drivers/uio_pci_generic/new_id
+   #设备可能被其他驱动绑定，需要将其解绑到uio_pci_generic驱动
+   #echo -n 0000:00:19.0 > /sys/bus/pci/drivers/e1000e/unbind
+   #echo -n 0000:00:19.0 > /sys/bus/pci/drivers/uio_pci_generic/bind
+   #lspci -vv #查看设备被哪个驱动程序绑定
+内核驱动实现（"uio_hv_generic"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于
+    Hyper-V VMBus上的设备。
+    
+用户空间驱动：通过通用内核驱动可以获取到设备内存和中断等信息
+    #mmap设备内存到用户空间。通过访问数组一样的方式去初始化设备，设备开始工作。
+    #等待中断。中断发生后int32_t lastcount = read(/dev/uioX)返回，中断可能丢失。
+    
+内核驱动实现（"igb_uio"）：DPDK提供，For some devices which lack support for 
+    legacy interrupts, e.g. virtual function (VF) devices, the igb_uio module
+    may be needed in place of uio_pci_generic.
+    
+约束与限制：
+      1. UIO无法在UEFI安全引导的硬件上工作，应使用vfio-pci。
+      2. 确保IOMMU关闭，或者工作模式为passthrough
+        x86_64: "intel_iommu=off" 或者 "intel_iommu=on iommu=pt"
+        arm64:  "amd_iommu=off" 或者 "iommu.passthrough=1"
+      3. 无法使用VT-d的I/O硬件虚拟化技术，可能存储安全问题
+      4. 仅支持Legacy中断（对比MSI/MSI-X），"UIO不支持DMA设备？？？"
+参考：
+1. lsuio可查看UIO设备所有属性(http://www.osadl.org/projects/downloads/UIO/user/)
+2. UIO帮助文档，https://www.kernel.org/doc/html/latest/driver-api/uio-howto.html
+
+二、VFIO
+    VFIO是一套用户态驱动框架，在虚拟化中被用于实现设备的透传。现代系统都提供了
+    DMA和中断重映射功能（AMD-Vi和Intel VT-d）以隔离I/O设备。VFIO支持使用此特性。
+    1.确保BIOS激活IOMMU功能，IOMMU属于VT-D的一个部分。
+    2.确保内核编译时CONFIG_INTEL_IOMMU有被选中
+    3.配置内核参数intel_iommu=on、vfio_iommu_type1.allow_unsafe_interrupts=1
+    4. 检查系统支持DMAR，dmesg | grep –e DMAR –e IOMMU(找到DMAR: IOMMU enabled)
+    
+    三个概念：
+    A. Groups: Devices的集合（没有IOMMU前设备可以访问整个地址空间）,启用IOMMU后，
+       物理设备属于IOMMU一个group,VFIO以Group为最小单位进行设备分配。分配前确保
+       将组内所有设备从宿主机驱动剥离开，可以不关联VFIO驱动，剥离后组就绪.
+    B. Devices: 
+    C. Containers: Groups的集合（不同Containers内的Groups可能有相同的Groups编号）
+用户空间接口：用户空间通过如下两个文件访问一个VFIO设备。
+    1. 创建一个新的container
+        container = open("/dev/vfio/vfio", O_RDWR);
+    2. group = open(/dev/vfio/$GROUP)
+    3. ioctl(group, VFIO_GROUP_SET_CONTAINER, &container) 加1或多个组到容器
+    3. 获取设备，设备不暴露给用户空间/* Get a file descriptor for the device */
+        device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, "0000:06:0d.0");
+    3. ioctl(其他方法) 加入容器后才能用其他方法
+    
+内核驱动实现（"vfio-pci"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于PCI
+    总线上的设备（遵循PCI 2.3或者PCIE规范）。
+    #modprobe vfio-pci
+    #驱动程序(vfio-pci)声明支持驱动设备(lspci -nvv ==> 8086 3e90)
+    #echo 0000:00:02.0 > /sys/bus/pci/devices/0000:00:02.0/driver/unbind
+    #echo 8086 3e90 > /sys/bus/pci/drivers/vfio-pci/new_id
+     （echo 8086 9d70 > /sys/bus/pci/drivers/vfio-pci/new_id 声卡）
+     （echo 8086 a2af > /sys/bus/pci/drivers/vfio-pci/new_id XHCI）
+    #设备可能被其他驱动绑定，需要将其解绑到vfio-pci驱动
+约束与限制：
+      1. 支持在没有IOMMU硬件平台上工作，需要显式打开：
+         #echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
+      2. 仅支持non-bridge PCI设备
+虚拟化：
+qemu使用vfio设备，-device vfio-pci,host=0000:00:01.0
+
+三、Option ROM
+    # cd /sys/bus/pci/devices/0000:00:02.0/
+    # echo 1 > rom
+    # cat rom > /tmp/8086_3e90.rom
+    # echo 0 > rom
+    # 如果要修改PCI ID，需要用rom-parser修改并更新校验码
+    # git clone https://github.com/awilliam/rom-parser
+    # cd rom-parser && make 生成rom-parser程序
+    # usage: rom-fixer [ROM file]
+    
+    
+诊断VFIO范例：
+#modprobe vfio-pci
+#echo 0000:00:02.0 > /sys/bus/pci/devices/0000:00:02.0/driver/unbind
+#echo 8086 3e90 > /sys/bus/pci/drivers/vfio-pci/new_id
+
+#echo 0000:00:14.0 > /sys/bus/pci/devices/0000:00:14.0/driver/unbind
+#echo 8086 a2af > /sys/bus/pci/drivers/vfio-pci/new_id
+
+LC_ALL=C \
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+HOME=/var/lib/libvirt/qemu/domain-2-vm \
+XDG_DATA_HOME=/var/lib/libvirt/qemu/domain-2-vm/.local/share \
+XDG_CACHE_HOME=/var/lib/libvirt/qemu/domain-2-vm/.cache \
+XDG_CONFIG_HOME=/var/lib/libvirt/qemu/domain-2-vm/.config \
+QEMU_AUDIO_DRV=spice \
+QEMU_AUDIO_TIMER_PERIOD=125 \
+/usr/bin/qemu-system-x86_64 \
+-name guest=vm,debug-threads=on \
+-machine pc-i440fx-2.11,accel=kvm,usb=off,dump-guest-core=off,mem-merge=off \
+-cpu host,kvm=off \
+-m size=3061760k,slots=8,maxmem=268435456k \
+-realtime mlock=off \
+-smp 4,sockets=1,cores=4,threads=1 \
+-object iothread,id=iothread1 \
+-object iothread,id=iothread2 \
+-numa node,nodeid=0,cpus=0-3,mem=2990 \
+-uuid 00000000-0000-0000-0000-000000000000 \
+-no-user-config \
+-nodefaults \
+-rtc base=localtime,clock=vm,driftfix=slew \
+-global kvm-pit.lost_tick_policy=delay \
+-no-hpet \
+-no-shutdown \
+-boot menu=off,strict=on \
+-device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
+-device virtio-scsi-pci,id=scsi0,bus=pci.0,addr=0x5 \
+-device virtio-serial-pci,id=virtio-serial0,bus=pci.0,addr=0x4 \
+-device usb-tablet,id=input0,bus=usb.0,port=1 \
+-vnc 0.0.0.0:29100,password \
+-spice port=5900,addr=0.0.0.0,seamless-migration=on \
+-device vfio-pci,host=0000:00:02.0,id=ua-hostigd,bus=pci.0,addr=0x2 \
+-bios /usr/share/qemu-kvm/seabios.bin \
+-smbios 'type=1,manufacturer=Ruijie Inc.,product=RCOS' \
+-smbios 'type=2,manufacturer=Ruijie Inc.,product=RCOS' \
+-smbios 'type=3,manufacturer=Ruijie Inc.' \
+-smbios 'type=17,manufacturer=Ruijie Inc.' \
+-machine igd-dsm-fhost=on \
+-global PIIX4_PM.disable_s3=1 \
+-global PIIX4_PM.disable_s4=1 \
+-chardev stdio,id=seabios \
+-device isa-debugcon,iobase=0x402,chardev=seabios \
+-machine pci_update_vga=false \
+-nographic \
+-vga none \
+-cpu host,kvm=off \
+-machine fake_mem_size=4G \
+-sandbox off \
+-msg timestamp=on \
+-device vfio-pci,host=0000:00:14.0 \
+win7_64_legacy.img
+
+
+-drive file=/opt/lessons/images/diff_1baea260d-7293-4f73-a22a-6e5e71f94d67.qcow2,format=qcow2,if=none,id=drive-scsi0-0-0-0,cache=writeback,copy-on-read=off,discard=unmap \
+-device scsi-hd,bus=scsi0.0,channel=0,scsi-id=0,lun=0,drive=drive-scsi0-0-0-0,id=scsi0-0-0-0,bootindex=1,write-cache=on,serial=QM001 \
+
+
+
+
+

@@ -1,0 +1,72 @@
+一、ELF(Executable and Linking Format)也被称为Object文件，主要分成三类：
+1. Relocatable file
+    .o .a用于静态链接
+    
+
+2. Executable file
+    a.out等程序；
+    link editor将多个Relocatable file链接成一个Executable file；
+    每个Relocatable file内容会拷贝到Executable file中；
+    可执行文件有两种，Executable file或者脚本，但是bash、sh等是Executable file；
+
+3. Shared object file
+    共享库文件，也成为动态库文件，一般名为 xxx.so;
+    如果都是拿Relocatable file链接成Executable file，会浪费磁盘和内存空间；
+    link editor将Relocatable file和Shared object file链接成一个Executable file；
+    运行时，dynamic linker将一个Executable file和多个Shared object file映射成一个进程镜像；
+    
+范例1、查看一个Object是哪种类型的
+#file main.o
+main.o: ELF 64-bit LSB relocatable
+
+#file a.out
+a.out: ELF 64-bit LSB executable
+
+#file /lib64/libspice-server.so.1.8.0 
+/lib64/libspice-server.so.1.8.0: ELF 64-bit LSB shared object
+
+二、ELF内部结构：
+        Linking View                    Execution View
+   +-----------------------+      +-----------------------+
+   |        ELF header     |      |        ELF header     |
+   +-----------------------+      +-----------------------+
+   | program header table  |      | program header table  |
+   |        optional       |      +-----------------------+
+   +-----------------------+      |       segment 1       |
+   |       section 1       |      +-----------------------+
+   +-----------------------+      |         .....         |
+   |         .....         |      +-----------------------+
+   +-----------------------+      |       segment n       |
+   |       section n       |      +-----------------------+
+   +-----------------------+      | section header table  |
+   | section header table  |      |        optional       |
+   +-----------------------+      +-----------------------+
+1). ELF header (#readelf -h a.out)
+    Magic：7f 45 4c 46 ... xx(OS和GCC辨别是否为ELF文件，45|4c|46为'ELF'的ASCII码)
+    version：ELF 版本，目前均为1
+    Entry point address：程序的入口地址（_start的虚拟地址），.o文件没有入口，故为0
+    Start of program headers: program header table位置
+    Start of section headers: section header table位置
+    Size of this header: ELF header字节数
+    Size of program headers: program header table字节数
+    Number of program headers: program header的条目数
+    Size of section headers: section header table字节数
+    Number of section headers: section header的条目数
+    Section header string table index: ？？？？
+    ....
+    
+2). Program Header table(#readelf -l a.out )
+    
+3). sections
+
+4). section header table
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   

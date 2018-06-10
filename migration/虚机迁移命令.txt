@@ -1,0 +1,5 @@
+一、Openstack 热迁移
+将虚机热迁移到 zetta01
+# openstack server migrate --live zetta01 --block-migration UUID
+如果迁移失败需要重置状态到 running
+# nova reset-state lichun_2_72e3470a-0588-4fba-9bc1-028ff7f0de88 --active

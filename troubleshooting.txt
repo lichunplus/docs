@@ -1,0 +1,122 @@
+1. 进程/线程的CPU Affinity
+    查询 PID（TID）= 20294当前的CPU Affinity.
+    # taskset -p示c 20294
+    pid 20294's current affinity list: 0-47 （默认亲和所有非isolcpus的CPU）
+
+2. 配置孤立CPU
+    #配置内核参数 isolcpus=1,2,3 （孤立cpu 1,2,3中间三个CPU）
+    
+    
+
+
+kvm_vcpu_ioctl(cpu, KVM_RUN, 0); 
+退出原因是EINTR或EAGAIN，可能是gdb ctrl+c导致，
+KVM会吃掉这个信号，QEMU trace不会记录这个
+
+
+一、Windows内磁盘检查
+1. 检查windows系统文件完整性是否一致
+    使用windows系统文件检测程序（sfc）去检测系统文件完整性问题。
+    (cmd)#sfc/scannow
+    Windows 资源保护未找到任何完整性冲突。
+2. 文件系统一致性检测,检测后需要手动关闭窗口
+    (cmd)#CHKDSK C:
+    Windows 已检查文件系统并确定没有问题。
+    （blocking正常的）
+3. windows内存诊断
+    搜索 windows内存诊断并运行->立即重启诊断内存
+
+二、perf查看关键tracepoint。
+    # perf record -p 41255 -a -e kvm:\*  捕获kvm所有tracepoint
+    # perf script  配合grep查询
+    #监视 ioport读写状态，perf kvm --host stat live --event=ioport|mmio|vmexit  -p 45854
+
+四、无法休眠，或者无法唤醒
+    (cmd)powercfg /requests    查看休眠被谁阻止
+    (cmd)powercfg /requestsoverride    ???
+    #错误页面选择删除并重新启动,然后搜集一下三个命令输出。
+    (cmd)powercfg /A
+    (cmd)powercfg /Q
+    (cmd)powercfg /lastwake
+    命令1用于检查系统是否支持休眠（确保所有设备都支持休眠）
+    命令2查询当前电源计划，确保有激活自动休眠：
+        电源设置 GUID: 9d7815a6-7ee4-497e-8888-515a05f02364  (在此时间后休眠)
+          GUID 别名: HIBERNATEIDLE
+          最小可能的设置: 0x00000000
+          最大可能的设置: 0xffffffff
+          可能的设置增量: 0x00000001
+          可能的设置单位: 秒
+        当前交流电源设置索引: 0x0000012c
+        当前直流电源设置索引: 0x00000000
+    命令3查询当前电源计划，确保有激活自动休眠
+    其他命令：
+    (cmd)powercfg /H on|off   禁用或者启用休眠功能
+    (cmd)powercfg  /DEVICEQUERY S4_supported    查询系统支持S4的所有设备列表
+    If the error status is 0xC000009A, then it means the request failed because
+    a filesystem failed to make forward progress.
+    
+    0xC000009A, or STATUS_INSUFFICIENT_RESOURCES, indicates a lack of nonpaged pool resources.
+powercfg /devicequery wake_armed
+    
+三、查看OVMF日志
+    #使用debug版本的OVMF.fd固件,并配置一个默认串口设备。并重新启动
+        <qemu:arg value="-bios" />
+        <qemu:arg value="/opt/lichun/OVMF.fd" />
+        <qemu:arg value="-serial" />
+        <qemu:arg value="file:/opt/lichun/debug.log" />
+    #cat /opt/lichun/debug.log
+    
+四、gdb调试OVMF
+    #qemu -s           #tcp::1234, 启动qemu命令前需要先激活gdb代理
+    #gdb               #启动gdb，连接gdb代理(qemu)
+    (gdb)target remote 127.0.0.1:1234
+    (gdb)bt
+    
+五、windows打开命令行和应用程序
+    1. 安装系统过程可以通过shift+F10打开cmd或者powershell
+    2. (cmd)devmgmt.exe 打开任务管理器
+
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/perf-deb/perf --user=share --password=share
+
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/cpp-5_5.4.0-6ubuntu1_16.04.12_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/gcc-5-base_5.4.0-6ubuntu1_16.04.12_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/gdb_7.11.1-0ubuntu1_16.5_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/gdbserver_7.11.1-0ubuntu1_16.5_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libbabeltrace-ctf1_1.3.2-1_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libbabeltrace1_1.3.2-1_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libcc1-0_5.4.0-6ubuntu1_16.04.12_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libgomp1_5.4.0-6ubuntu1_16.04.12_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libpython3.5-minimal_3.5.2-2ubuntu0_16.04.10_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/libpython3.5_3.5.2-2ubuntu0_16.04.10_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/python3.5-minimal_3.5.2-2ubuntu0_16.04.10_amd64.deb --user=share --password=share
+wget http://rcc.ruijie.net/D%3A/Upload/lichun/gdb-deb/python3.5_3.5.2-2ubuntu0_16.04.10_amd64.deb --user=share --password=share
+dpkg -i *.deb
+附A：perf用法
+    下载：
+        Debian: apt-get install linux-tools-common
+        RHEL: yum install perf
+    1. # perf list | grep xxx 查看内核有哪些event
+    2. # perf top -p 50446 -a  -e kvm:\*  查看程序在干嘛
+    3. 显示哪个函数最耗CPU0，可以指定那个用户空间的和线程,-p表示所有线程-t指定某些线程
+        perf top 
+        perf top -e cycles -C 0 -g –p 1234  –t 12345
+        perf top -e cycles:k
+        u - user-space counting
+         k - kernel counting
+         h - hypervisor counting
+         G - guest counting (in KVM guests)
+         H - host counting (not in KVM guests)
+         p - precise level
+        -C 0 表示查看cpu0
+        –p 1234 表示查看进程id 1234，包括所有线程
+        –t 12345 表示只查看Id为1235的线程
+        -g表示显示调用关系
+
+    4. #perf script 查看报告
+    
+附B：gdb用法
+一. 前期准备
+    1. 编译程序添加 gcc -ggdb使程序包含符号。
+1. 信号处理【handle SIGNAL [ACTIONS]】
+   ACTIONS：有stop|nostop|print|noprint|pass(noignore)|nopass(ignore)
+   例：handle SIGUSR1 nostop noprint 不关注SIGUSR1信号

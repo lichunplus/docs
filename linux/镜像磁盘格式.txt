@@ -1,0 +1,27 @@
+术语：
+MBR: Master boot record
+MBR: Master boot record
+一、MBR分区表格式(MBR|GPT)
+1. MBR 位于磁盘第一个扇区（512字节），当对磁盘进行分区时会被创建。包含三个部分：
+    struct mbr {
+      const unsigned char unused[446];  /* 主引导代码 */
+      struct mbr_partition {            /* 分区表,最多有四个主分区 */
+        unsigned char status;
+        struct chs first_sector;        /* first absolute sector */
+        unsigned char type;
+        struct chs last_sector;         /*last absolute sector */
+        uint32_t first_lba;             /* first absolute sector */
+        uint32_t sectors;               /* number of sectors */
+      } partitions[MAX_PARTITIONS];
+      unsigned char magic[2];           /* 结束标识0X55AA */
+    } __attribute__((packed));
+2. 主引导代码扫描分区表，得出激活的分区,引导代码仅用于激活的分区
+3. 主引导代码加载激活分区的引导boot sector
+4. 控制权交给boot sector中的代码进而加载系统
+
+二、MBR主分区(primary partition)结构：
+    1. boot sector
+    2. data
+
+三、MBR扩展分区结构
+略

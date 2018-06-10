@@ -1,0 +1,5 @@
+   ifeq ((var,X) OR (var,Y))
+      ...
+   endif
+
+https://lists.gnu.org/archive/html/help-make/2005-10/msg00056.html

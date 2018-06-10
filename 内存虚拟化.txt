@@ -1,0 +1,41 @@
+一. hugetlbpage
+
+ARCH support:
+  X86(4K|2M|*1G-'pdpe1gb')、IA64(4K|8K|64K|256K|1M|4M|16M|256M)、PPC64(4K|16M)
+
+目的:
+  提高TLB命中率，适用于进程占用较大内存的场景，例如qemu.
+
+配置:
+    确保内核支持(CONFIG_HUGETLBFS|CONFIG_HUGETLB_PAGE)
+    方法一、系统启动时分配，
+            # vi /etc/default/grub（分配4个1M页和2个1G页）
+              hugepagesz=1M hugepages=4 hugepagesz=1G hugepages=2
+    default_hugepagesz=<size>（？？？）
+    hugepages=<number>
+        是在引导时分配的大页面数量
+    hugepagesz=<size>
+        指定页大小，单位是byte,可以指定K M G KB MB GB
+    注：grub2-mkconfig -o /boot/grub2/grub.cfg && reboot
+    1.  查看余量grep HugePages /proc/meminfo
+    2.  /etc/fstab添加挂载项，然后mount -a生效
+    nodev /dev/hugepages hugetlbfs defaults,nofail,pagesize=1G 0 0
+    确保mount -l |grep hugetlbfs 使用前确保已挂载
+    
+    echo 13 > /proc/sys/vm/nr_hugepages 动态设置内存大页数量
+    
+使用:
+    1. mmap system call.
+    2. standard SYSV shared memory (shmget, shmat).
+
+查看余量:
+    #cat /proc/meminfo | grep -i huge
+    HugePages_Total: Pool中所有大页数量
+    HugePages_Free:  Pool中未分配的大页数量
+    HugePages_Rsvd:  Pool中预留的大页数量，
+                     更具体点就是指程序已经向系统申请，
+                     但是由于程序还没有实质的HugePages读写操作，
+                     因此系统尚未实际分配给程序的HugePages数目。
+    HugePages_Surp:  指超过系统设定的常驻HugePages数目的数目。
+                     /proc/sys/vm/nr_overcommit_hugepages记录超配的大页面数量
+    Hugepagesize:    默认内存大页大小

@@ -1,0 +1,14 @@
+
+"qio-channel"
+│    
+├── "qio-channel-file"
+│   ├── virtserialport        ---->/dev/hvcN     阻塞
+│          ├── virtconsole    ---->/dev/vport1pN 非阻塞，系统会监听
+│    
+├── "qio-channel-socket"
+
+
+
+QIO CHANNEL:
+    QIO CHANNEL FILE
+        CHANNEL WATCH

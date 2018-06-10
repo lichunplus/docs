@@ -1,0 +1,12 @@
+术语：
+
+一、ISO9660文件系统
+    struct {
+        const unsigned char unused[32768‬];
+        struct volume_descriptors {
+            int8 type;
+            strA Identifier;
+            int8 Version;
+            const unsigned char data[‬2041];
+        }
+    } __attribute__((packed)) mbr;

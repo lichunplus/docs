@@ -1,0 +1,11 @@
+一. Grub
+Grub引导分为两个阶段：
+    阶段一：汇编代码，位于MBR中
+    阶段二：C代码，引导分区（一般是第一个分区，挂载在/boot）
+    #vi /etc/default/grub && grub2-mkconfig -o /boot/grub2/grub.cfg
+Grub手动引导：
+    1. set root=(hd0,msdos1)    #IDE hd<N>、 SCSI sd<N>、 软盘fd<N>，N从0开始。
+       表示磁盘 #msdos<N>表示分区，N从1开始
+    2. linux /vmlinuz-3.10.0-514.el7.x86_64  ro  root=/dev/sda1  #指定内核及参数
+    3. initrd /initramfs-3.10.0-514.el7.x86_64                   #指定initramdisk
+    4. boot #开始引导

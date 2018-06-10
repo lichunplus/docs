@@ -1,0 +1,47 @@
+0. -安装centos7-minimal开发环境
+    -修改grub2配置步骤：
+      #vi /etc/default/grub # ...修改...
+      #sudo update-grub (Debain)
+      #sudo grub2-mkconfig -o /boot/grub2/grub.cfg (Rad Hat)
+
+1. 禁用selinux
+    -永久关闭
+      #vi /etc/selinux/config
+      SELINUX=disabled
+      ...
+    -临时关闭
+      #setenforce 0
+    -查看状态
+      #getenforce
+      Disabled
+
+2. 禁用firewalld
+    -#systemctl stop firewalld
+    -#systemctl disable firewalld
+
+3. 安装常用的软件包
+   #yum install git lrzsz man-pages irssi translate-shell epel-release
+
+4. 配置samba
+Samba是CIFS文件系统的一种实现，提供Linux 和 Windows系统间文件、打印机共享服务。
+将要开发的源代码放到samba共享的linux系统中，windows端可以直接用source insight等
+开发工具打开源代码直接开发并保存，linux端就可以直接编译。
+#安装
+# yum install samba
+# 添加配置项
+# vi /etc/samba/smb.conf
+…
+[public]
+        comment = Public Directories
+        path = /opt
+        write list = root
+        create mask = 0644
+        directory mask = 0755
+# systemctl enable smb
+# systemctl start smb
+# smbpasswd -a root
+\\IPAddr就可以直接访问
+注：
+1. 部分系统可能提示symbol krb5_get_init_creds_opt_set_pac_request, not defined
+   解决办法升级krb5-libs  # yum install krb5-libs
+2. Win10虚机需要在虚机中激活桥接网络后支持，原因不明

@@ -1,0 +1,9 @@
+1. 异常关机后进入windows error recovery页面
+  禁用错误修复页面命令，重启生效
+  (管理员cmd)bcdedit /set {current} bootstatuspolicy ignoreallfailures
+  启用错误修复页面命令，重启生效
+  (管理员cmd)bcdedit /set {current} bootstatuspolicy displayallfailures
+
+2. 
+
+

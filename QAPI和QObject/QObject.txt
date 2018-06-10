@@ -1,0 +1,150 @@
+QAPI子系统：
+
+一、QAPI中使用的基本数据类型：
+        *QObject(qobject.c)
+        │
+        ├── QNull(qnull.c)
+        │      bool qnull_is_equal(const QObject *x, const QObject *y) #always return true
+        ├── QNum(qnum.c)
+        │      QNum *qnum_from_int(int64_t value);
+        │      QNum *qnum_from_uint(uint64_t value);
+        │      QNum *qnum_from_double(double value);
+        │      bool qnum_get_try_int(const QNum *qn, int64_t *val);
+        │      int64_t qnum_get_int(const QNum *qn);
+        │      bool qnum_get_try_uint(const QNum *qn, uint64_t *val);
+        │      uint64_t qnum_get_uint(const QNum *qn);
+        │      double qnum_get_double(QNum *qn);    #存在精度误差
+        │      char *qnum_to_string(QNum *qn);
+        │      QNum *qobject_to_qnum(const QObject *obj);
+        │      bool qnum_is_equal(const QObject *x, const QObject *y);
+        │      void qnum_destroy_obj(QObject *obj); 
+        ├── QBool(qbool.c)
+        │      QBool *qbool_from_bool(bool value);
+        │      bool qbool_get_bool(const QBool *qb);
+        │      QBool *qobject_to_qbool(const QObject *obj);
+        │      bool qbool_is_equal(const QObject *x, const QObject *y);
+        │      void qbool_destroy_obj(QObject *obj);
+        ├── QString(qstring.c)
+        │      QString *qstring_new(void);
+        │      QString *qstring_from_str(const char *str);
+        │      QString *qstring_from_substr(const char *str, int start, int end);
+        │      size_t qstring_get_length(const QString *qstring);
+        │      const char *qstring_get_str(const QString *qstring);
+        │      void qstring_append_int(QString *qstring, int64_t value);
+        │      void qstring_append(QString *qstring, const char *str);
+        │      void qstring_append_chr(QString *qstring, int c);
+        │      QString *qobject_to_qstring(const QObject *obj);
+queue.h │      bool qstring_is_equal(const QObject *x, const QObject *y);
+├       │      void qstring_destroy_obj(QObject *obj);
+├──----─├── QList(qlist.c)
+        │      QList *qlist_new(void);
+        │      QList *qlist_copy(QList *src);
+        │      void qlist_append_obj(QList *qlist, QObject *obj);
+        │      /* 遍历qlist，执行iter函数,并传递opaque */
+        │      void qlist_iter(const QList *qlist, void (*iter)(QObject *obj, void *opaque), void *opaque);
+        │      QObject *qlist_pop(QList *qlist); /* 移除并返回第一个元素或NULL */
+        │      QObject *qlist_peek(QList *qlist); /* 只返回第一个元素或NULL */
+        │      int qlist_empty(const QList *qlist);
+        │      size_t qlist_size(const QList *qlist); /* 元素个数 */
+        │      QList *qobject_to_qlist(const QObject *obj);
+        │      bool qlist_is_equal(const QObject *x, const QObject *y);
+        │      void qlist_destroy_obj(QObject *obj);
+        ├── QDict(qdict.c)
+        │      QDict *qdict_new(void);
+        │      const char *qdict_entry_key(const QDictEntry *entry); //返回该entry的名称
+        │      QObject *qdict_entry_value(const QDictEntry *entry);  //返回该entry的值
+        │      size_t qdict_size(const QDict *qdict);                //键值对个数
+        │      void qdict_put_obj(QDict *qdict, const char *key, QObject *value); //插入元素，如果key存在，那么value会被覆盖
+        │      void qdict_del(QDict *qdict, const char *key); //删除元素
+        │      int qdict_haskey(const QDict *qdict, const char *key) //判断Key是否已经存在
+        │      QObject *qdict_get(const QDict *qdict, const char *key) //通过key获取value，不存在返回NULL
+        │      QDict *qobject_to_qdict(const QObject *obj);
+        │      /* 相等以为着字典长度相等，并且每个entry的key和value都相等， dict是无序的 */
+        │      bool qdict_is_equal(const QObject *x, const QObject *y)
+        │      /*遍历字典，执行回调并传递opaque，另外一个遍历方式for (e = qdict_first(dict_x); e; e = qdict_next(dict_x, e)) */
+        │      void qdict_iter(const QDict *qdict, void (*iter)(const char *key, QObject *obj, void *opaque), void *opaque)
+        │      const QDictEntry *qdict_first(const QDict *qdict) //返回第一个entry，用于迭代
+        │      const QDictEntry *qdict_next(const QDict *qdict, const QDictEntry *entry) //返货指定entry的下一个entry，用于迭代
+        │      void qdict_destroy_obj(QObject *obj);
+        │      /* 如果知道value类型，可以通过以下函数直接设置或获取 */
+        │      #define qdict_put(qdict, key, obj)
+        │      #define qdict_put_int(qdict, key, value)
+        │      #define qdict_put_bool(qdict, key, value) 
+        │      #define qdict_put_str(qdict, key, value)
+        │      #define qdict_put_null(qdict, key) 
+        │      double qdict_get_double(const QDict *qdict, const char *key);
+        │      int64_t qdict_get_int(const QDict *qdict, const char *key);
+        │      bool qdict_get_bool(const QDict *qdict, const char *key);
+        │      QList *qdict_get_qlist(const QDict *qdict, const char *key);
+        │      QDict *qdict_get_qdict(const QDict *qdict, const char *key);
+        │      const char *qdict_get_str(const QDict *qdict, const char *key);
+        │      /* 尝试获取value，通过参数返回值 */
+        │      int64_t qdict_get_try_int(const QDict *qdict, const char *key, int64_t def_value);
+        │      bool qdict_get_try_bool(const QDict *qdict, const char *key, bool def_value);
+        │      const char *qdict_get_try_str(const QDict *qdict, const char *key);
+        │      void qdict_copy_default(QDict *dst, QDict *src, const char *key) /*每个dst中没有该key，那么就复制key过去*/
+        │      void qdict_set_default_str(QDict *dst, const char *key, const char *val);//如果dst没有该key，初始化一个QString塞进去
+        │      QDict *qdict_clone_shallow(const QDict *src);//复制返回一个QDict，entry没有复制，仅仅是引用
+        │      void qdict_flatten(QDict *qdict)//将被嵌套的qdist展开，元素加入最外层qdist中，Key从命令为key1.key2...
+        │      /* 将src字典中，key以start为前缀的所有entry都加入dst中 */
+        │      void qdict_extract_subqdict(QDict *src, QDict **dst, const char *start);
+            void qdict_array_split(QDict *src, QList **dst);//?????太复杂了
+            int qdict_array_entries(QDict *src, const char *subqdict);//?????太复杂了
+            QObject *qdict_crumple(const QDict *src, Error **errp); //?????太复杂了
+        │      /* 将src中的元素移到dst中，如果overwrite=true，覆盖key相同的值，移动后src=null，否则src=冲突的部分 */
+        │      void qdict_join(QDict *dest, QDict *src, bool overwrite)
+        │
+        ├── QLit(qlit.c)未用到
+        ├── (qerror.h)废弃
+        ├── QJson(qjson.c)
+        │      /* 把提供的string转换为QObject类型，然后可以通过qobject_to_xxx换行成相应的qxxx类型 */
+        │      QObject *qobject_from_json(const char *string, Error **errp);
+        │      /* 同上，有两点差异：
+        │         支持formmat,例如xxx = qobject_from_jsonf("{'QMP': {'version': %p, 'capabilities': []}}", ver)
+        │         如果传入的string不合法，会ASSERT异常 */
+        │      QObject *qobject_from_jsonf(const char *string, ...) GCC_FMT_ATTR(1, 2);
+        │      QObject *qobject_from_jsonv(const char *string, va_list *ap, Error **errp)//内部使用
+        │     
+        │     /*将其他q类型的对象转换为JSON样式的字符串 */
+        │     QString *qobject_to_json(const QObject *obj);
+        │     QString *qobject_to_json_pretty(const QObject *obj);
+        
+二、QAPI QMPCOMMAND工作机制：
+//可以将QmpCommand分类，注册到不同的QmpCommandList上，通过下列函数：
+void qmp_register_command(QmpCommandList *cmds, const char *name, QmpCommandFunc *fn, QmpCommandOptions options);
+void qmp_unregister_command(QmpCommandList *cmds, const char *name);
+QmpCommand *qmp_find_command(QmpCommandList *cmds, const char *name);
+
+/* request是一个字典类型，必须有execute以及可选的arguments元素
+   如{ "execute": "qmp_capabilities" }
+   execute的值是QmpCommand名称，例子是qmp_capabilities命令
+   找到相应的QmpCommand，确保该QmpCommand是enable的，然后执行FN函数
+   否则返回错误原因 */
+QObject *qmp_dispatch(QmpCommandList *cmds, QObject *request);
+
+//* 将Error对象，转换成Json格式的错误提示
+QObject *qmp_build_error_object(Error *err);
+
+
+//查询QmpCommand只有有success_response属性
+//设置QCO_NO_SUCCESS_RESP表示QmpCommand中的FN函数必须返回NULL
+//未设置QCO_NO_SUCCESS_RESP表示QmpCommand中的FN函数有返回一个Qdict，如果没有QAPI创建一个空的{}
+bool qmp_has_success_response(const QmpCommand *cmd);
+
+//配置或查询QmpCommand状态及名词
+//enabled表示该命令可以被调用，否则QAPI直接反回错误
+void qmp_disable_command(QmpCommandList *cmds, const char *name);
+void qmp_enable_command(QmpCommandList *cmds, const char *name);
+bool qmp_command_is_enabled(const QmpCommand *cmd);
+const char *qmp_command_name(const QmpCommand *cmd);
+
+//遍历cmds上所有QmpCommand 调用fn函数并传递opaque
+//typedef void (*qmp_cmd_callback_fn)(QmpCommand *cmd, void *opaque);
+void qmp_for_each_command(QmpCommandList *cmds, qmp_cmd_callback_fn fn,
+                          void *opaque);
+    
+    
+    
+    
+    
+    

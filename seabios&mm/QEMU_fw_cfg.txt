@@ -1,0 +1,72 @@
+参考：https://wiki.osdev.org/QEMU_fw_cfg
+
+QEMU提供了一个策略FW_CFG,支持将strings或files传递给VM,一般用于：
+  1. 给内核传递参数
+  2. 给BIOS传递参数
+  3. 给系统传递文件
+  例如：
+  #qemu -fw_cfg name=opt/com.name.domain.your.example,string=1
+  #qemu -fw_cfg name=opt/com.name.domain.your.example,file=example_filename.png
+  #qemu -fw_cfg opt/com.name.domain.your.example,file=example_filename.png
+  注：名称前缀"opt/"保留给用户扩展，name最长为55个字符
+
+FW_CFG工作原理：
+一. X86平台提供三个IO端口(对于其他平台是三个MMIO地址)
+  #define FW_CFG_PORT_SEL     0x510(16位)
+  #define FW_CFG_PORT_DATA    0x511(8位)
+  #define FW_CFG_PORT_DMA     0x514(32位)
+  1. 首先往PORT_SEL写入"selector"以控制PORT_DATA从哪读数据,"selector"：
+        #define FW_CFG_SIGNATURE    0x0000
+        #define FW_CFG_ID           0x0001
+        #define FW_CFG_FILE_DIR     0x0019
+            -HEADER：头4个字节记录传入的文件数量
+            -数据：每个文件描述符64个字节,数据结构
+                struct FWCfgFile {
+                    uint32_t size;      #???
+                    uint16_t select;    #???
+                    uint16_t reserved;
+                    char name[56];      #参数name
+                };
+  2. 然后读取PORT_DATA,一次读一个字节
+  3. PORT_DMA是一个优化
+  
+  范例1,读取string
+  
+  
+  范例2,读取file过程
+         首先FW_CFG_PORT_SEL写入FW_CFG_FILE_DIR后读FW_CFG_PORT_DATA获取文件目录
+         然后FW_CFG_PORT_SEL写入FWCfgFile.select后读FW_CFG_PORT_DATA获取文件内容
+二. DMA优化
+  早期只能通过FW_CFG_PORT_DATA一个字节一个字节读取信息和文件内容,引入DMA优化
+  工作过程：
+  1. 首先往内存写入一个struct FWCfgDmaAccess结构体，表示一次DMA访问请求
+    struct FWCfgDmaAccess {
+        uint32_t control;
+        uint32_t length;
+        uint64_t address;
+    } FWCfgDmaAccess;
+  2. 然后把FWCfgDmaAccess首地址写入设备DMA register（IO端口）
+    - control字段4字节,指定DMA命令,某些命令复用了control前2个字节,用于传递参数
+        typedef enum fw_cfg_ctl_t {
+            fw_ctl_error = 1,    #以下请求出错时这位自动写入非0
+            fw_ctl_read = 2,     #读文件内容 read(FWCfgDmaAccess.address, FWCfgDmaAccess.length)
+            fw_ctl_skip = 4,     #跳过特定的字节 seek(FWCfgDmaAccess.length)
+            fw_ctl_select = 8,   #选择并seek(0)文件,control前2个字节指定文件
+            fw_ctl_write = 16    #QEMU 2.4之前允许write(FWCfgDmaAccess.address, FWCfgDmaAccess.length)
+        } fw_cfg_ctl_t;
+    目前写入QEMU立刻执行DMA请求(QEMU文档警告fw_cfg可能有一天变得异步)
+    范例1,
+        FWCfgDmaAccess cmd;
+        cmd.control = htonl(fw_ctl_read);
+        cmd.address = htobe64(buffer_ptr);
+        cmd.length = htonl(size);
+        uintptr_t cmd_physaddr = uintptr_t(&cmd);
+        uint32_t cmd_physaddr_lo = uint32_t(cmd_physaddr & 0xFFFFFFFFU);
+        uint32_t cmd_physaddr_hi = sizeof(uintptr_t) > sizeof(uint32_t)
+                ? uint32_t(cmd_physaddr >> 32) : 0;
+        if (cmd_physaddr_hi)
+            outl(FW_CFG_PORT_DMA, htonl(cmd_physaddr_hi));
+        outl(FW_CFG_PORT_DMA + 4, htonl(cmd_physaddr_lo));
+
+三、虚拟化扩展
+    #qemu -fw_cfg name=opt/com.ruijie.seabios,file=./seabios.conf

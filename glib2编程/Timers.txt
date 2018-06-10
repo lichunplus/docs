@@ -1,0 +1,25 @@
+用于跟踪程序运行时间，并非内核的timer，像一个秒表
+
+
+GTimer *g_timer_new (void);
+    创建一个定时器，不需要时要用g_timer_destroy (GTimer *timer)释放
+    创建定时器后会自动开始计时（隐式调用g_timer_start()）
+
+voidg_timer_reset (GTimer *timer);
+void g_timer_start (GTimer *timer);
+    开始计时，voidg_timer_reset基本不用，请使用g_timer_start
+
+void g_timer_stop (GTimer *timer);
+    停止计时
+
+gdouble g_timer_elapsed (GTimer *timer, gulong *microseconds);
+    获取从开始计时到现在或者停止计时这段时间值
+    返回值分两部分：
+        1. 经过的秒数整数部分，通过函数返回
+        2. 经过的秒数小数部分，通过microseconds返回，基本不用，传递NULL表示忽略
+
+gboolean g_timer_is_active (GTimer *timer);
+    判断是否在计时
+
+void g_timer_destroy (GTimer *timer);
+    删除GTimer资源

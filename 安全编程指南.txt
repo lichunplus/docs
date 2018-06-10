@@ -1,0 +1,29 @@
+原文（https://dwheeler.com/secure-programs/Secure-Programs-HOWTO/index.html）
+阅读记录（自版本v3.72，2015-09-19）
+
+1. 简介
+    略
+2. 背景
+    略
+10. C语言安全编程
+    1. 推荐普通应用程序使用更高级的语言编程，而不是C。
+    2. 访问不存在或者已释放的指针、两次free操作
+    3. Linux libc（高于5.4.23版）和GNU libc（2.x版）支持设置MALLOC_CHECK_ 以允许
+       上面一些问题出现，而不会停止程序运行。
+       MALLOC_CHECK_ == 0  堆损坏将被忽略
+       MALLOC_CHECK_ == 1  堆损坏在stderr上打印诊断信息
+       MALLOC_CHECK_ == 2  堆损坏将立即调用abort()
+    4. 有很多工具可以检测这个问题，Electric Fence和Valgrind
+    5. 攻击者可能会利用未使用的内存来创建拒绝服务
+    6. 声明类型时，请尽可能严格。
+       -使用“枚举”来定义枚举值（而不只是char、int）在switch语句中，
+           可以使用编译器确定是否已涵盖所有合法值。
+       -如果值不能为负，则在适当的地方使用“无符号”类型。
+    7. char可以是有符号的也可以是无符号的，体现在转换成整数后的值
+        char a=0x80;
+        unsigned char b=0x80;
+        printf("char c=%d\n", a); ==》-128 ??? gcc用-funsigned-char特性解决此问题
+        printf("char c=%d\n", b); ==》128
+        
+    8. C对类型检测相当宽松，因此需要主动提高它们的检查级别，消除警告
+        gcc -Wall -Wpointer-arith -Wstrict-prototypes -O2（请至少包含此编译标志）

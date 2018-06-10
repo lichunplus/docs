@@ -1,0 +1,6 @@
+gboolean  g_uuid_string_is_valid (const gchar *str)
+    判断一个字符是不是UUID
+
+gchar *	g_uuid_string_random ()
+    随机生成一个UUID字符串，不用后需要g_free(gchar *str).
+    
