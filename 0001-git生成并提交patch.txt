@@ -1,0 +1,51 @@
+QEMU开发：
+=========
+参考：https://www.qemu.org/contribute/
+
+1.任何patch都要遵循SubmitAPatch(https://wiki.qemu.org/Contribute/SubmitAPatch)
+2.抄送给对应的maintainer
+3.SoftFreeze或者HardFreeze期间维护人员可能正在忙着准备下一个版本
+  You may need to wait until the next development window opens up 
+4.即使在window opens up期间,可能也需要1-2周才能有回应,可以恢复"ping"消息来置顶
+5.stable版本, 例如2.11.0发布后,2.11.x或2.11.xy稳定版仅在2.12.0之前生成
+6.How to get a patch into QEMU stable
+
+SubmitAPatch(one-shot fix):
+0. git配置（作者及邮箱）
+    #git config --global user.name lichun
+    #git config --global user.email lichun@ruijie.com.cn
+    #使用QQ邮箱配置如下四项,QQ邮箱获取授权码：设置->账户->生成授权码)
+    #git config --global sendemail.smtpuser 706701795@qq.com
+    #git config --global sendemail.smtpserver smtp.qq.com
+    #git config --global sendemail.smtpencryption tls
+    #git config --global sendemail.smtpserverport 587
+    #使用工作邮箱配置如二四项
+    #git config --global sendemail.smtpuser lichun@ruijie.com.cn
+    #git config --global sendemail.smtpserver casfz.ruijie.com.cn
+
+1. 制作patch文件，签名(使用git commit -s),命令git format-patch HEAD~生成patch
+2. 检查patch合法性（例如,使用./scripts/checkpatch.pl v1-0001-i440FX-pcihost.patch）
+3. patch发送到qemu-devel@nongnu.org（对应分支的mailing list)
+   Cc: 文件维护者（通过./scripts/get_maintainer.pl -f "hw/pci-host/i440fx.c|patch-file"查询）
+   Cc: 也要cc给自己
+    $ git send-email \ +++ install -y git-email
+    --to qemu-devel@nongnu.org \
+    --cc 706701795@qq.com \
+    --cc mst@redhat.com \ +++
+    --cc imammedo@redhat.com \ +++
+    --cc marcel.apfelbaum@gmail.com \ +++
+    0001-i440FX-pcihost-add-allow-hotplug-property-for-config.patch
+    (输入密码)
+4. 等待评审并修订，然后再"add==>commit --amend==>format-patch -v 2==>send-email"
+
+tips:
+1. 问题：git status时无法显示中文
+    方法：#git config --global core.quotepath false
+2. 这行是谁修改得？
+    #git blame src/test.c
+    #git show short-id                               
+3. 删除远程分支
+    #git push origin :devel
+4. 取消某次commit
+    #git reset --hard  commit-id2
+    #git push origin HEAD --force
