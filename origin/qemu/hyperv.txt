@@ -1,0 +1,424 @@
+Hyper-V Enlightenments
+======================
+Hyper-V 特性（启蒙）让guest（windows）能感知到运行在兼容Hyper-V的平台上
+
+
+1. Description
+===============
+KVM实现了很多半虚拟化硬件接口,linux-guest工作良好，windows-guest支持有限.
+KVM(x86)实现了Hyper-V特性，这些特性让windows认为自己运行在兼容Hyper-V平台上并使用新特性
+
+In some cases when implementing a hardware interface in software is slow, KVM
+implements its own paravirtualized interfaces. This works well for Linux as
+guest support for such features is added simultaneously with the feature itself.
+It may, however, be hard-to-impossible to add support for these interfaces to
+proprietary OSes, namely, Microsoft Windows.
+
+KVM on x86 implements Hyper-V Enlightenments for Windows guests. These features
+make Windows and Hyper-V guests think they're running on top of a Hyper-V
+compatible hypervisor and use Hyper-V specific features.
+
+
+2. Setup
+=========
+1. QEMU和KVM默认均关闭所有关于Hyper-V的特性
+2. 命令 # --cpu host,hv_relaxed,hv_vpindex,hv_time, ..激活
+3. 部分Hyper-V特性依赖其他功能，QEMU需要检查
+4. 激活任意一个Hyper-V特性后，Hypervisor-ID(通过#cpuid 0x40000000..0x4000000A获取)
+   字段的值会更改为Hyper-V内容. KVM-ID被保存到0x40000100..0x40000101区域.
+
+No Hyper-V enlightenments are enabled by default by either KVM or QEMU. In
+QEMU, individual enlightenments can be enabled through CPU flags, e.g:
+
+  qemu-system-x86_64 --enable-kvm --cpu host,hv_relaxed,hv_vpindex,hv_time, ...
+
+Sometimes there are dependencies between enlightenments, QEMU is supposed to
+check that the supplied configuration is sane.
+
+When any set of the Hyper-V enlightenments is enabled, QEMU changes hypervisor
+identification (CPUID 0x40000000..0x4000000A) to Hyper-V. KVM identification
+and features are kept in leaves 0x40000100..0x40000101.
+
+
+3. Existing enlightenments
+===========================
+特性列表：
+- hv-passthrough: 调试使用，用于激活所有Hyper-V特性
+
+3.1. hv-relaxed
+================
+依赖：KVM_CAP_HYPERV
+KVM-Hyper-V提供了如下MSR,Guest可以轻松的通过hypercall接口访问如下MSR,如果KVM没有处理会导致#GP-fault:
+ -HV_X64_MSR_GUEST_OS_ID
+ -HV_X64_MSR_HYPERCALL
+QEMU配置hv-relaxed后，设置特征位，向Guest暴露此特性，并推荐Guest使用.
+guest如果使用，动关闭一下功能超时机制：
+  -clock interrupt
+  -DPC watchdog
+
+1. windows在Hv#1检查到hv-relaxed时,主动关闭一下功能超时机制(避免宿主机高负荷时出现BSOD):
+   -clock interrupt
+   -DPC watchdog
+2. win8和win-server2012如果感知到时运行在虚拟化上，那默认将激活relaxed-timing.
+3. WDT(watch dog timer)由APCI定义，是电源管理的一部分, 是一个硬件设备.
+4. Windows的WDT驱动程序通过BIOS提供WDAT(Watchdog Action Table)ACPI表使用看门狗(linux支持，但倾向于直接使用硬件)
+目的: 避免宿主机系统负载过高时因为中断交付过慢或者vCPU调度过慢导致watchdog-timer误报，进而windows系统出现BSOD问题
+参考: http://download.microsoft.com/download/a/f/7/af7777e5-7dcd-4800-8a0a-b18336565f5b/hardwarewdtspec.doc
+
+This feature tells guest OS to disable watchdog timeouts as it is running on a
+hypervisor. It is known that some Windows versions will do this even when they
+see 'hypervisor' CPU flag.
+
+3.2. hv-vapic
+==============
+依赖：KVM_CAP_HYPERV 
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR,如果KVM没有处理会导致#GP-fault
+ -HV_X64_MSR_EOI
+ -HV_X64_MSR_ICR
+ -HV_X64_MSR_TPR
+QEMU配置hv-vapic后，设置特征位，向Guest暴露此特性，并推荐Guest使用.
+guest如果使用，应该通过如上三个MSR访问其他MSRs,而不是使用memory-mapped方式.
+
+- hv-vapic: 向guest提供VP-ASSIST-PAGE-MSR页，辅助APIC更有效地工作
+
+Provides so-called VP Assist page MSR to guest allowing it to work with APIC
+more efficiently. In particular, this enlightenment allows paravirtualized
+(exit-less) EOI processing.
+
+3.3. hv-spinlocks=xxx
+======================
+依赖：KVM_CAP_HYPERV
+GuestOS执行spinlock期间其实可以转让CPU资源的.
+短时间的spinlock可以节省线程调度开销，长时间的spinlock会浪费CPU资源
+为此，此参数用于让guest重试"hv-spinlocks=number"次无果后通告hypervisor,主动转让CPU
+!!!此参数不受hypervisor是否激活preempt功能限制
+"Allows other guests to run when vCPU is blocked on a spinlock"
+
+hv-spinlocks=0          不尝试(一旦guest调用spinlock，立刻退出到hypervisor转让CPU)
+hv-spinlocks=0xFFFFFFFF(x86虚机缺省值)任其guest一直执行spinlock
+
+Enables paravirtualized spinlocks. The parameter indicates how many times
+spinlock acquisition should be attempted before indicating the situation to the
+hypervisor. A special value 0xffffffff indicates "never to retry".
+
+3.4. hv-vpindex
+================
+依赖：KVM_CAP_HYPERV
+      kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_VP_INDEX
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR,如果KVM没有处理会导致#GP-fault
+ -*HV_X64_MSR_VP_INDEX
+MSR中存放Virtual-Processor-index信息
+注：此特性应该和hv-synic结合使用才有意义.
+
+hv-stimer和其他依赖hv-vpindex的特性需要知道Virtual-Processor-index信息
+
+Provides HV_X64_MSR_VP_INDEX (0x40000002) MSR to the guest which has Virtual
+processor index information. This enlightenment makes sense in conjunction with
+hv-synic, hv-stimer and other enlightenments which require the guest to know its
+Virtual Processor indices (e.g. when VP index needs to be passed in a
+hypercall).
+
+3.5. hv-runtime
+================
+依赖：KVM_CAP_HYPERV
+      kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_VP_RUNTIME
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR,如果KVM没有处理会导致#GP-fault
+ -*HV_X64_MSR_VP_RUNTIME
+MSR中存放virtual processor运行时间(单位100ns),这可以让GuestOS知道被'stolen'的时间.
+
+Provides HV_X64_MSR_VP_RUNTIME (0x40000010) MSR to the guest. The MSR keeps the
+virtual processor run time in 100ns units. This gives guest operating system an
+idea of how much time was 'stolen' from it (when the virtual CPU was preempted
+to perform some other work).
+
+3.6. hv-crash
+==============
+依赖：KVM_CAP_HYPERV
+      kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_CRASH_CTL
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR:
+ -*HV_X64_MSR_CRASH_P0
+ -*HV_X64_MSR_CRASH_P1
+ -*HV_X64_MSR_CRASH_P2
+ -*HV_X64_MSR_CRASH_P3
+ -*HV_X64_MSR_CRASH_P4
+ -*HV_X64_MSR_CRASH_P5
+ -*HV_X64_MSR_CRASH_CTL
+当Guest发生CRASH时，会将crash信息写入到上面MSR寄存器，QEMU日志会记录这些信息.
+注：写入CRASH信息后会触发Windows关机，因此windows不会再有crashdump生成.
+
+Provides HV_X64_MSR_CRASH_P0..HV_X64_MSR_CRASH_P5 (0x40000100..0x40000105) and
+HV_X64_MSR_CRASH_CTL (0x40000105) MSRs to the guest. These MSRs are written to
+by the guest when it crashes, HV_X64_MSR_CRASH_P0..HV_X64_MSR_CRASH_P5 MSRs
+contain additional crash information. This information is outputted in QEMU log
+and through QAPI.
+Note: unlike under genuine Hyper-V, write to HV_X64_MSR_CRASH_CTL causes guest
+to shutdown. This effectively blocks crash dump generation by Windows.
+
+3.7. hv-time
+=============
+依赖：KVM_CAP_HYPERV
+      KVM_CAP_HYPERV_TIME
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR:
+ -*HV_X64_MSR_TIME_REF_COUNT
+ -*HV_X64_MSR_REFERENCE_TSC
+Guest访问这些MSR获取时间可以加快速度.
+QEMU实现中,激活hv-time后先自动尝试激活hv-frequencies.
+
+Enables two Hyper-V-specific clocksources available to the guest: MSR-based
+Hyper-V clocksource (HV_X64_MSR_TIME_REF_COUNT, 0x40000020) and Reference TSC
+page (enabled via MSR HV_X64_MSR_REFERENCE_TSC, 0x40000021). Both clocksources
+are per-guest, Reference TSC page clocksource allows for exit-less time stamp
+readings. Using this enlightenment leads to significant speedup of all timestamp
+related operations.
+
+3.8. hv-synic
+==============
+依赖：KVM_CAP_HYPERV
+      KVM_CAP_HYPERV_SYNIC
+      HV_X64_MSR_SCONTROL,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_SCONTROL
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR:
+    -HV_X64_MSR_SCONTROL
+    -HV_X64_MSR_SVERSION
+    -HV_X64_MSR_SIEFP
+    -HV_X64_MSR_SIMP
+    -HV_X64_MSR_EOM
+    -HV_X64_MSR_SINT0
+    -HV_X64_MSR_SINT1
+    -HV_X64_MSR_SINT2
+    -HV_X64_MSR_SINT3
+    -HV_X64_MSR_SINT4
+    -HV_X64_MSR_SINT5
+    -HV_X64_MSR_SINT6
+    -HV_X64_MSR_SINT7
+    -HV_X64_MSR_SINT8
+    -HV_X64_MSR_SINT9
+    -HV_X64_MSR_SINT10
+    -HV_X64_MSR_SINT11
+    -HV_X64_MSR_SINT12
+    -HV_X64_MSR_SINT13
+    -HV_X64_MSR_SINT14
+    -HV_X64_MSR_SINT15
+
+Synthetic-interrupt-controller(SynIC, 是LAPIC的功能扩展)
+SynIC是一个半虚拟化中断控制器提供向Guest发送中断机制(VMBus Message),guest通过如下MSR接口控制:
+
+VMBus-devices和Hyper-V-synthetic-timers依赖此特性，QEMU目前尚未有VMBus-devices设备
+
+Enables Hyper-V Synthetic interrupt controller - an extension of a local APIC.
+When enabled, this enlightenment provides additional communication facilities
+to the guest: SynIC messages and Events. This is a pre-requisite for
+implementing VMBus devices (not yet in QEMU). Additionally, this enlightenment
+is needed to enable Hyper-V synthetic timers. SynIC is controlled through MSRs
+HV_X64_MSR_SCONTROL..HV_X64_MSR_EOM (0x40000080..0x40000084) and
+HV_X64_MSR_SINT0..HV_X64_MSR_SINT15 (0x40000090..0x4000009F)
+
+Requires: hv-vpindex
+
+3.9. hv-stimer
+===============
+依赖：KVM_CAP_HYPERV
+      HV_X64_MSR_STIMER0_CONFIG,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_STIMER0_CONFIG
+
+KVM-Hyper-V提供了如下MSR,Guest可以访问如下MSR:
+    -HV_X64_MSR_STIMER0_CONFIG
+    -HV_X64_MSR_STIMER0_COUNT
+    -HV_X64_MSR_STIMER1_CONFIG
+    -HV_X64_MSR_STIMER1_COUNT
+    -HV_X64_MSR_STIMER2_CONFIG
+    -HV_X64_MSR_STIMER2_COUNT
+    -HV_X64_MSR_STIMER3_CONFIG
+    -HV_X64_MSR_STIMER3_COUNT
+
+激活Hyper-V-synthetic-timers,KVM为每个vCPU提供四路独立的定时器,通过如上MSR提供给Guest:
+这些定时器支持single-shot和periodic两种模式.
+部分windows不支持该时钟！！！
+
+不使用此半虚拟化时钟的windows CPU在空闲时也消耗大量的CPU资源,因为其他非半虚拟化的
+时钟都会产生周期性的中断，进而导致频繁的vm-exit.
+
+Enables Hyper-V synthetic timers. There are four synthetic timers per virtual
+CPU controlled through HV_X64_MSR_STIMER0_CONFIG..HV_X64_MSR_STIMER3_COUNT
+(0x400000B0..0x400000B7) MSRs. These timers can work either in single-shot or
+periodic mode. It is known that certain Windows versions revert to using HPET
+(or even RTC when HPET is unavailable) extensively when this enlightenment is
+not provided; this can lead to significant CPU consumption, even when virtual
+CPU is idle.
+
+Requires: hv-vpindex, hv-synic, hv-time
+
+3.10. hv-tlbflush
+==================
+依赖：KVM_CAP_HYPERV
+      KVM_CAP_HYPERV_TLBFLUSH,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含KVM_CAP_HYPERV_TLBFLUSH
+
+TLB(translation lookaside buffer)缓存
+完整的虚拟地址和物理地址映射信息存放在页表(内存)上，TLB缓存了最频繁用的部分信息.
+当一个CPU变更了一条virtual--physical-mapping时，需要通过IPI(x86)中断让其他CPU执行TLBflush(清空)
+这个过程被称为： “TLB shoot-down”
+对于虚机，目标vCPU可能都还没被调度等，因此hypervisor可以为其实现“TLB shoot-down”优化
+配置此参数后，会推荐Guest使用Hypercall的方式实现TLBFlush而是不是IPI中断.
+
+参考:https://lwn.net/Articles/684934/
+
+Enables paravirtualized TLB shoot-down mechanism. On x86 architecture, remote
+TLB flush procedure requires sending IPIs and waiting for other CPUs to perform
+local TLB flush. In virtualized environment some virtual CPUs may not even be
+scheduled at the time of the call and may not require flushing (or, flushing
+may be postponed until the virtual CPU is scheduled). hv-tlbflush enlightenment
+implements TLB shoot-down through hypervisor enabling the optimization.
+
+Requires: hv-vpindex
+
+3.11. hv-ipi
+=============
+依赖：KVM_CAP_HYPERV
+      KVM_CAP_HYPERV_SEND_IPI
+
+IPI表示由一个处理器发通告给一组处理器(可能包含自身),IPI语意的实现:
+-通过写APIC寄存器(虽然是KVM模拟的，但是对guest是完全虚拟化)
+-通过HV_X64_MSR_ICR MSR(KVM提供的页，对guest是半虚拟化)
+guest可以很轻易的把IPI描述到MSR上,然后通知hypervisor处理，而不用对APIC设备进行一系列操作
+激活该配置后，推荐Guest使用hypercall来实现IPI.
+
+Enables paravirtualized IPI send mechanism. HvCallSendSyntheticClusterIpi
+hypercall may target more than 64 virtual CPUs simultaneously, doing the same
+through APIC requires more than one access (and thus exit to the hypervisor).
+
+Requires: hv-vpindex
+
+3.12. hv-vendor-id=xxx
+=======================
+guest执行 #cpuid 0x40000000,后可能返回:
+    - EAX|EBX|ECX|EDX = "Microsoft Hv"
+    - EAX|EBX|ECX|EDX = "KVMKVMKVM   "
+QEMU实现，如果有配置hv特性，那么返回"Microsoft Hv".
+此配置用于自定义签名
+
+This changes Hyper-V identification in CPUID 0x40000000.EBX-EDX from the default
+"Microsoft Hv". The parameter should be no longer than 12 characters. According
+to the specification, guests shouldn't use this information and it is unknown
+if there is a Windows version which acts differently.
+Note: hv-vendor-id is not an enlightenment and thus doesn't enable Hyper-V
+identification when specified without some other enlightenment.
+
+3.13. hv-reset
+===============
+依赖：KVM_CAP_HYPERV
+      HV_X64_MSR_RESET,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_RESET
+
+KVM-Hyper-V提供了如下MSR,Guest可通过写HV_X64_MSR_RESET来执行RESET操作
+  -HV_X64_MSR_RESET
+
+不推荐使用！！！，即使激活windows也可能不使用
+
+Provides HV_X64_MSR_RESET (0x40000003) MSR to the guest allowing it to reset
+itself by writing to it. Even when this MSR is enabled, it is not a recommended
+way for Windows to perform system reboot and thus it may not be used.
+
+3.14. hv-frequencies
+============================================
+依赖：KVM_CAP_HYPERV
+      HV_X64_MSR_TSC_FREQUENCY,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_TSC_FREQUENCY
+
+KVM-Hyper-V提供了如下MSR,向guest提供MSR,Guest无需测量计算可直接从MSR中读取TSC/APCI频率
+- HV_X64_MSR_TSC_FREQUENCY 用于提供TSC频率
+- HV_X64_MSR_APIC_FREQUENCY 用于APIC频率
+
+对于物理机，在使用TSC时钟前需要通过rdtsc指令获取TSC中的当前值，通过两次计算算出具体频率
+因此此特性是有KVM显式告诉Guest TSC和APIC时钟频率,ACPI频率计算也是类似的.
+
+Provides HV_X64_MSR_TSC_FREQUENCY (0x40000022) and HV_X64_MSR_APIC_FREQUENCY
+(0x40000023) allowing the guest to get its TSC/APIC frequencies without doing
+measurements.
+
+3.15 hv-reenlightenment
+========================
+依赖：KVM_CAP_HYPERV
+      HV_X64_MSR_TSC_FREQUENCY,kvm_ioctl(s, KVM_GET_MSR_INDEX_LIST, kvm_msr_list)返回list需包含HV_X64_MSR_TSC_FREQUENCY
+
+专用于KVM上虚机嵌套Hyper-V场景，如果激活，则KVM向guest提供：
+-HV_X64_MSR_REENLIGHTENMENT_CONTROL
+-HV_X64_MSR_TSC_EMULATION_CONTROL
+-HV_X64_MSR_TSC_EMULATION_STATUS
+
+TSC频率修改后(迁移)可通告guest,迁移后，在guest更新TSC之前先由KVM模拟和迁移前相同频率的TSC
+
+
+The enlightenment is nested specific, it targets Hyper-V on KVM guests. When
+enabled, it provides HV_X64_MSR_REENLIGHTENMENT_CONTROL (0x40000106),
+HV_X64_MSR_TSC_EMULATION_CONTROL (0x40000107)and HV_X64_MSR_TSC_EMULATION_STATUS
+(0x40000108) MSRs allowing the guest to get notified when TSC frequency changes
+(only happens on migration) and keep using old frequency (through emulation in
+the hypervisor) until it is ready to switch to the new one. This, in conjunction
+with hv-frequencies, allows Hyper-V on KVM to pass stable clocksource (Reference
+TSC page) to its own guests.
+
+Recommended: hv-frequencies
+
+3.16. hv-evmcs
+===============
+专用于KVM上虚机嵌套Hyper-V场景，如果激活，则KVM向guest提供:Enlightened-VMCS-feature
+此特性实现L0 (KVM) and L1 (Hyper-V)通信协议，从而使L2直接可以退到L0 (KVM)
+
+仅适用于Intel架构!!!
+激活此特性后可能自动禁用一些其他特性，比如Posted-Interrupts等!!!
+
+The enlightenment is nested specific, it targets Hyper-V on KVM guests. When
+enabled, it provides Enlightened VMCS feature to the guest. The feature
+implements paravirtualized protocol between L0 (KVM) and L1 (Hyper-V)
+hypervisors making L2 exits to the hypervisor faster. The feature is Intel-only.
+Note: some virtualization features (e.g. Posted Interrupts) are disabled when
+hv-evmcs is enabled. It may make sense to measure your nested workload with and
+without the feature to find out if enabling it is beneficial.
+
+Requires: hv-vapic
+
+3.17. hv-stimer-direct
+=======================
+guest配置的Hyper-Vsynthetic-timer定时器到期后,Hyper-V支持两种通告模式：
+-classic模式 通过SynIC-message（VMBus messages）通告guest
+-direct模式  通过normal-interrupt通告guest
+
+众所周知，如果虚机内部激活Hyper-V虚拟化(嵌套)后需要配置hv-stimer-direct，原理不明.
+
+Hyper-V specification allows synthetic timer operation in two modes: "classic",
+when expiration event is delivered as SynIC message and "direct", when the event
+is delivered via normal interrupt. It is known that nested Hyper-V can only
+use synthetic timers in direct mode and thus 'hv-stimer-direct' needs to be
+enabled.
+
+Requires: hv-vpindex, hv-synic, hv-time, hv-stimer
+
+3.17. hv-no-nonarch-coresharing=on/off/auto
+===========================================
+This enlightenment tells guest OS that virtual processors will never share a
+physical core unless they are reported as sibling SMT threads. This information
+is required by Windows and Hyper-V guests to properly mitigate SMT related CPU
+vulnerabilities.
+When the option is set to 'auto' QEMU will enable the feature only when KVM
+reports that non-architectural coresharing is impossible, this means that
+hyper-threading is not supported or completely disabled on the host. This
+setting also prevents migration as SMT settings on the destination may differ.
+When the option is set to 'on' QEMU will always enable the feature, regardless
+of host setup. To keep guests secure, this can only be used in conjunction with
+exposing correct vCPU topology and vCPU pinning.
+
+4. Development features
+========================
+In some cases (e.g. during development) it may make sense to use QEMU in
+'pass-through' mode and give Windows guests all enlightenments currently
+supported by KVM. This pass-through mode is enabled by "hv-passthrough" CPU
+flag.
+Note: enabling this flag effectively prevents migration as supported features
+may differ between target and destination.
+
+
+4. Useful links
+================
+Hyper-V Top Level Functional specification and other information:
+https://github.com/MicrosoftDocs/Virtualization-Documentation

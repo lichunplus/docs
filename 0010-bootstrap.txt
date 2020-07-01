@@ -1,0 +1,64 @@
+一、获取并执行第一条指令
+8086(16位处理器):
+  处理器8086提供两个16位寄存器用于获取代码，CS和IP。
+  复位后，CS=0xFFFF
+          IP=0x0000
+  CPU自动从"CS<<4+IP"单元获取一条指令执行，执行后IP+=指令长度。
+  因此第一条指令将从0xFFFF0内存单元获取,在实际应用中,ROM-BIOS一般被映射在
+  0xF0000~0xFFFFF范围（F段）,共64K,最顶部的16字节只存放一条跳转指令。
+
+x86(32位处理器):
+  处理器x86的CS包含两个部分, 复位后：
+  - CS.base = 0xFFFF0000
+  - CS.selector = 0xF000
+  - EIP = 0x0000FFF0
+  CPU自动从"CS.base+IP"单元获取一条指令执行,执行后IP+=指令长度。
+  因此第一条指令将从0xFFFFFFF0内存单元获取,当程序执行到跳转指令时:
+  #ljmpw $0xf000:$0xe05b, CS.selector和EIP的值被更新,处理器自动更新CS.base,
+  CS.base = CS.selector<<4,下一条指令仍然从"CS.base+IP"单元获取。
+
+二、BIOS初始化
+256K的BIOS被映射在top-4G的顶部256KB区域:
+    *0xFFFFFFFF -------------
+    *           pc-bios(256K)
+    *0xFFFC0000 -------------
+同时，其中顶部128K也被映射在top-1M区域:
+    *0xFFFFF -------------------------
+    *         @pc-bios 0x20000~0x3ffff 
+    *0xE0000 -------------------------
+
+第一条指令0xFFFFFFF0位于romlayout.S::reset_vector,是一条跳转指令
+# cat romlayout.S
+...
+reset_vector:
+        ljmpw $SEG_BIOS, $entry_post
+        .end
+跳到0xf000:0xe05b,为什么是这个地址???
+然后先判断%cs:HaveRunPost，如果是刚上电，那将跳到post.c:handle_post(),开始POST过程
+从汇编跳到C代码过程：
+ - 设置栈 ss:sp(0x0000:0x07FF,共28K)
+从16bit模式跳到32bit模式：
+ - 禁用IRQs（cli，外设中断）
+ - 禁用NMI(端口0x70的最高位,outb $0x80, $0x70, 主板支持隔离外设NMI请求，通过CMOS_RTC寄存器配置)
+   程序通过IO端口0x70和0x71完全控制RTC&CMOS控制器，控制器内部是一个sram,需要电池供电否则数据丢失,
+   先outb $value, $0x70,选择如下寄存器(value低7位用于寻址，bit8=1用于禁用NMI)，再inb $0x71 %al读取值
+   sram空间(统称为控制器寄存器)分布：
+   #0x0 ~ 0xc,共14个字节，用于存储RTC时间
+   #0x10,共一个字节
+   #注：其他字节未标准化无需关注,不建议修改.
+ - 启用A20-Line, 8086地址总线20位line0~19寻址1M, 到了80286支持寻址16M,line20~23以上默认禁用,需要激活a20-line后才能寻址16M
+   启用方法(最常用之一)：outb $0x2, $0x92,端口0x92的第二个bit位,由8042ps/2控制器提供该端口.
+ - 激活保护模式
+   *保护模式的向量表(IDT):见100-interrupt.txt
+   *保护模式内存分段(GDT、LDT): 在实模式和保护模式都可以使用A:B形式逻辑地址来寻址(A选择段，B为段内偏移. 不同段可能有重叠部分)
+    实模式：A*16+B
+    保护模式：A是16位的CS.selector寄存器
+             selector.index是GDT或LDT表的索引
+             selector.ti是选择GDT或者LDT当前使用的GDT或LDT表有GDTR或LDTR指定(由lgdtr、sgdtr、lldtr、sldtr指令控制)
+             selector.cpl是当前CPU运行级别内核态的ring0~用户态的ring3
+   *模式切换，CR0寄存器,PE=1为保护模式,进入保护模式后寻址扩大到4G，在下一次ljmp时，CS将变化，因此进入保护模式后下一条指令应该主动ljmp：
+        bit31                                          bit0
+        +----+----+----+-----+----+----+----+----+----+----+
+    CR0 | PG | CD | NW | ... | NE | ET | TS | EM | MP | PE |
+        +----+----+----+-----+----+----+----+----+----+----+
+   

@@ -1,0 +1,15 @@
+支持且测试过的系统版本：
+Name / Description              Version     Build Number    Public Release
+Windows XP, Service Pack 3      5.1         2600            2008-04-21
+Windows 7, Service Pack 1       6.1         7601            2011-02-22
+Windows 10, Version 1903        10.0        18362           2019-05-21
+未测试的系统版本：
+Windows 10, Version 1709        10.0        16299           2017-10-17
+Windows 10, Version 1803        10.0        17134           2018-04-30
+Windows 10, Version 1809        10.0        17763           2018-11-13
+Windows 10, Version 1909        10.0        18363           2019-11-12
+Windows 10, Version 2004        10.0        19041           2020-05-27
+参考：https://www.gaijin.at/en/infos/windows-version-numbers
+下载地址：http://msdn.itellyou.cn/
+
+

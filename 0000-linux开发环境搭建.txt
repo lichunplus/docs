@@ -1,3 +1,4 @@
+一、基本配置
 0. -安装centos7-minimal开发环境
     -修改grub2配置步骤：
       #vi /etc/default/grub # ...修改...
@@ -45,3 +46,136 @@ Samba是CIFS文件系统的一种实现，提供Linux 和 Windows系统间文件
 1. 部分系统可能提示symbol krb5_get_init_creds_opt_set_pac_request, not defined
    解决办法升级krb5-libs  # yum install krb5-libs
 2. Win10虚机需要在虚机中激活桥接网络后支持，原因不明
+
+5. 电子邮箱部分
+   - offlineimap, 用于接收邮件
+     #yum install offlineimap
+     #vim ~/.offlineimaprc(qq邮箱) 
+      [general]
+      accounts = 706701795@qq.com
+
+      [Account 706701795@qq.com]
+      localrepository = Local
+      remoterepository = Remote
+      status_backend = sqlite
+
+      [Repository Local]
+      type = Maildir
+      localfolders = ~/.qqemail/
+
+      [Repository Remote]
+      type = IMAP
+      remotehost = imap.qq.com
+      remoteuser = 706701795@qq.com
+      remotepass = haqwathzrexqbefb
+      ssl = no
+     #vim ~/.offlineimaprc(工作邮箱)
+      [general]
+      accounts = lichun@ruijie.com.cn
+
+      [Account lichun@ruijie.com.cn]
+      localrepository = Local
+      remoterepository = Remote
+      status_backend = sqlite
+
+      [Repository Local]
+      type = Maildir
+      localfolders = ~/.ruijieemail/
+
+      [Repository Remote]
+      type = IMAP
+      remotehost = 127.0.0.1
+      remoteport = 1143
+      remoteuser = lichun
+      ssl = no
+
+    #offlineimap  接收到的邮件存放在~/.qqemail/
+
+   - mutt, 用于管理邮件
+     #yum install mutt (mutt不支持exchange收件协议,见6)
+     #创建三个目录用于存储消息头、内容、证书
+       #mkdir -p ~/.mutt/cache/headers
+       #mkdir ~/.mutt/cache/bodies
+       #touch ~/.mutt/certificates
+     #vi ~/.mutt/muttrc(QQ邮箱配置)
+       # imap settings
+       set mbox_type="Maildir"
+       set folder="~/.qqemail/" #offlineimap
+       set spoolfile="~/.qqemail/INBOX/"  #offlineimap
+       macro index,pager G '<shell-escape> offlineimap <enter>'
+       # smtp settings
+       set smtp_url = "smtp://706701795@smtp.qq.com:587"
+       set smtp_authenticators = "gssapi:login" #依赖yum install cyrus-sasl-plain -y
+       set smtp_pass = "haqwathzrexqbefb"
+       set ssl_force_tls = yes
+       # other settings
+       set edit_headers = yes  # See the headers when editing
+       set charset = UTF-8     # value of $LANG; also fallback for send_charset
+       unset use_domain        # because joe@localhost is just embarrassing
+       set realname = "lichun"
+       set from = "706701795@qq.com"
+       set use_from = yes
+       set header_cache = "~/.mutt/cache/headers"
+       set message_cachedir = "~/.mutt/cache/bodies"
+       set certificate_file = "~/.mutt/certificates"
+     #vi ~/.mutt/muttrc(工作邮箱配置)
+       # imap settings
+       set mbox_type="Maildir"
+       set folder="~/.ruijieemail/" #offlineimap
+       set spoolfile="~/.ruijieemail/INBOX/"  #offlineimap
+       macro index,pager G '<shell-escape> offlineimap <enter>'
+       # smtp settings
+       set smtp_url = "smtp://lichun@127.0.0.1:1025"
+       set smtp_authenticators = "gssapi:login" #依赖yum install cyrus-sasl-plain -y
+       set ssl_force_tls = yes
+       # other settings
+       set edit_headers = yes  # See the headers when editing
+       set charset = UTF-8     # value of $LANG; also fallback for send_charset
+       unset use_domain        # because joe@localhost is just embarrassing
+       set realname = "lichun"
+       set from = "lichun@ruijie.com.cn"
+       set use_from = yes
+       set header_cache = "~/.mutt/cache/headers"
+       set message_cachedir = "~/.mutt/cache/bodies"
+       set certificate_file = "~/.mutt/certificates"
+     #mutt
+6. 安装davmail邮件网关服务(exchange<-->imap)
+#安装davmail服务，参考:
+#cd /etc/yum.repos.d/
+#wget https://download.opensuse.org/repositories/home:mguessan:davmail/CentOS_7/home:mguessan:davmail.repo
+#yum install davmail
+#vi /etc/davmail.properties 
+...
+davmail.url=https://casfz.ruijie.com.cn/EWS/Exchange.asmx
+...
+二、内核编译
+1. RHEL升级内核(从elrepo源升级，参考http://elrepo.org/tiki/HomePage)
+#yum -y install yum-plugin-fastestmirror                     #自动选择速度最快的源
+#rpm --import https://www.elrepo.org/RPM-GPG-KEY-elrepo.org  #安装RPM报签名公钥
+#yum install https://www.elrepo.org/elrepo-release-7.el7.elrepo.noarch.rpm  #安装centos7的elrepo源(可选择版本)
+#yum --enablerepo=elrepo-kernel install kernel-ml            #yum --enablerepo=elrepo-kernel list | grep xxx可以查看有哪些包      
+然后执行步骤2完成配置
+
+2. 查看并选择已安装的内核信息
+sudo awk -F\' '$1=="menuentry " {print i++ " : " $2}' /etc/grub2.cfg
+sudo grub2-set-default 0（选中编号0）
+sudo grub2-mkconfig -o /boot/grub2/grub.cfg
+sudo reboot
+
+3. 编译内核驱动
+#yum install kernel-doc-$(uname -r)                 #内核API man文档, man-pages没有包含这一部分。例如： man printk
+#yum install kernel-devel-$(uname -r)               #默认位于/usr/src/kernels/
+#
+
+4.手动编译和替换内核
+1. #cd linux-source-dir && cp #/boot/config-5.4.103-1.el7.elrepo.x86_64 .config 
+2. #make menuconfig 保存文件。（更新新配置）
+3. #make -j$(nproc) rpm-pkg|binrpm-pkg
+4. #rpm -Uvh /root/rpmbuild/RPMS/x86_64/*
+5. 见二.2,然后重启
+
+三、NVIDIA驱动编译
+1. 下载，https://download.nvidia.com/XFree86/Linux-x86_64/
+2. 编译并安装内核（见二.4）驱动要求编译内核和驱动版本的GCC一致
+3. ./NVIDIA-Linux-x86_64-460.56.run --kernel-source-path=/root/rpmbuild/BUILD/kernel-5.4.103/
+4. 重启后执行# nvidia-smi 查看是否正常

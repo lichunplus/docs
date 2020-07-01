@@ -1,0 +1,346 @@
+一、概述
+1. libvirtd中的数据结构Daemon,server,program
+Daemon: 一个libvirtd就只有一个daemon
+Server: 一个Server监听一个socket，libvirtd这个Daemon有两个server
+        通过命令# virt-admin server-list可以查看到这两个server
+    1. libvirtd   监听libvirt-sock(virsh、nova-compute、)
+    2. admin      监听libvirt-admin-sock(virt-admin)
+    
+二、服务
+    libvirtd.service--------------libvirt主服务程序
+    libvirt-guests.service--------宿主机执行关机时，服务会休眠或关闭虚机
+                                  宿主机恢复时，服务会唤醒休眠的虚机
+    virtlogd----------------------默认qemu stdio为virtlogd提供的一个Pipe，
+                                  virtlogd提供log file rollover功能，间接将qemu输出写日到日志文件，
+                                  避免vm.log写满后qemu进程拒绝任何服务
+    
+    
+三、工具集
+  1.virt-xml-validate (XML合法性校验)
+        [root@zetta03 ~]# virt-xml-validate /opt/libvirt.xml 
+        /opt/libvirt.xml validates
+  2.virt-host-validate (宿主机有效性检测)
+      [root@zetta03 ~]# virt-host-validate qemu
+      QEMU: Checking for hardware virtualization                             : PASS
+      QEMU: Checking if device /dev/kvm exists                               : PASS
+      QEMU: Checking if device /dev/kvm is accessible                        : PASS
+      QEMU: Checking if device /dev/vhost-net exists                         : PASS
+      QEMU: Checking if device /dev/net/tun exists                           : PASS
+      QEMU: Checking for cgroup 'memory' controller support                  : PASS
+      QEMU: Checking for cgroup 'memory' controller mount-point              : PASS
+      QEMU: Checking for cgroup 'cpu' controller support                     : PASS
+      QEMU: Checking for cgroup 'cpu' controller mount-point                 : PASS
+      QEMU: Checking for cgroup 'cpuacct' controller support                 : PASS
+      QEMU: Checking for cgroup 'cpuacct' controller mount-point             : PASS
+      QEMU: Checking for cgroup 'cpuset' controller support                  : PASS
+      QEMU: Checking for cgroup 'cpuset' controller mount-point              : PASS
+      QEMU: Checking for cgroup 'devices' controller support                 : PASS
+      QEMU: Checking for cgroup 'devices' controller mount-point             : PASS
+      QEMU: Checking for cgroup 'blkio' controller support                   : PASS
+      QEMU: Checking for cgroup 'blkio' controller mount-point               : PASS
+      QEMU: Checking for device assignment IOMMU support                     : PASS
+      QEMU: Checking if IOMMU is enabled by kernel                           : PASS
+  3. virt-pki-validate (验证libvirt正确配置PKI文件)
+      此工具验证是否使用TLS加密协议为安全的libvirt服务器或客户端配置了必需的PKI文件
+      它将报告主机上任何缺少的证书或密钥文件。
+      
+  4. virt-what(检测当前系统是否在虚拟机中运行)
+      在物理机中运行----成功运行并没输出任何信息
+      在虚拟机中运行----输出虚拟机的“facts”信息
+      
+  5. virt-admin(admin-server的管理工具，命令集分多个组)
+    virt-admin(Virt-admin itself): cd pwd echo exit quit help version以及
+        uri: 查看“admin server URI”，一般是：libvirtd:///system
+        connect: 连接或重连到某个“admin server“，默认在运行命令时连接自身
+                 如：#connect libvirtd:///system
+    monitor(Monitoring commands): 包含servers和clients
+        server-list: 显示可用的server，一般是：
+                    # server-list
+                     Id    Name
+                    ---------------
+                     0     admin
+                     1     libvirtd
+        server-threadpool-info: 显示特定的server线程池配置信息，例如：
+                    # server-threadpool-info libvirtd
+                    minWorkers     : 5
+                    maxWorkers     : 20
+                    nWorkers       : 5
+                    freeWorkers    : 5
+                    prioWorkers    : 5
+                    jobQueueDepth  : 0
+        client-list: 显示某个server当前维持的Clients列表，例如：
+                    # client-list libvirtd
+                     Id    Transport       Connected since
+                    --------------------------------------------------
+                     8     unix            2019-09-06 11:34:54+0800
+        client-info: 查看某个客户端信息
+                    # client-info libvirtd 8
+                    id             : 8
+                    connection_time: 2019-09-06 11:34:54+0800
+                    transport      : unix
+                    readonly       : no
+                    unix_user_id   : 162
+                    unix_user_name : nova
+                    unix_group_id  : 162
+                    unix_group_name: nova
+                    unix_process_id: 157319
+        server-clients-info: 获取某个server的客户端相关配置限制
+                             可通过命令server-clients-set配置最大连接书
+                    # server-clients-info libvirtd
+                    nclients_max        : 5000 auth类型最大连接数
+                    nclients            : 1    auth类型当前连接数
+                    nclients_unauth_max : 20   unauth类型最大连接数
+                    nclients_unauth     : 0    unauth类型当前连接数
+                    
+    management(Management commands): 以上都是查询命令，这个组是控制命令：
+        server-clients-set: 设置最大客户端数量，包括auth和unauth
+                            可通过#server-clients-info libvirtd查看设置后的值例如
+            # server-clients-set libvirtd --max-clients 100
+                                          --max-unauth-clients 10
+        server-threadpool-set: 设置线程池属性
+                               可通过# server-threadpool-info libvirtd查看设置后的值
+            # server-threadpool-set libvirtd --min-workers 10
+                                             --max-workers 60
+                                             --priority-workers 5
+        client-disconnect: 强制断开某个客户端
+                           命令#client-list admin可以查看当前有多个客户端，例如：
+                           # client-disconnect admin 15
+                           Client '15' disconnected
+        daemon-log-filters: 获取或设置daemon日志过滤集
+            
+        daemon-log-filters: 获取或重置daemon日志输出后端，例如：
+                 #daemon-log-outputs  3:file:/var/log/test.log 重置目标文件
+                 #daemon-log-outputs （查看当前日志输出）
+                 Logging outputs: 3:file:/var/log/libvirt/test.log
+二、RPM包
+*libvirt:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-config-network = %{version}-%{release}
+    Requires: libvirt-daemon-config-nwfilter = %{version}-%{release}
+    %if %{with_libxl}
+    Requires: libvirt-daemon-driver-libxl = %{version}-%{release}
+    %endif
+    %if %{with_lxc}
+    Requires: libvirt-daemon-driver-lxc = %{version}-%{release}
+    %endif
+    %if %{with_qemu}
+    Requires: libvirt-daemon-driver-qemu = %{version}-%{release}
+    %endif
+    # We had UML driver, but we've removed it.
+    Obsoletes: libvirt-daemon-driver-uml <= 5.0.0
+    Obsoletes: libvirt-daemon-uml <= 5.0.0
+    %if %{with_vbox}
+    Requires: libvirt-daemon-driver-vbox = %{version}-%{release}
+    %endif
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-client = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+*libvirt-libs:
+libvirt-docs:
+*libvirt-bash-completion:
+
+*libvirt-daemon:
+    Requires: %{name}-libs = %{version}-%{release}
+    
+*libvirt-daemon-config-network:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    
+*libvirt-daemon-config-nwfilter:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    
+*libvirt-daemon-driver-network:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-nwfilter:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-nodedev:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-interface:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+
+*libvirt-daemon-driver-secret:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-core:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-logical:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-disk:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-scsi:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-iscsi:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+
+libvirt-daemon-driver-storage-iscsi-direct:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-mpath:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-driver-storage-gluster:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage-rbd:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-driver-storage-sheepdog:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-driver-storage-zfs:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+*libvirt-daemon-driver-storage:
+    Requires: libvirt-daemon-driver-storage-core = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage-disk = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage-logical = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage-scsi = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage-iscsi = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage-mpath = %{version}-%{release}
+    %if %{with_storage_iscsi_direct}
+    Requires: libvirt-daemon-driver-storage-iscsi-direct = %{version}-%{release}
+    %endif
+    %if %{with_storage_gluster}
+    Requires: libvirt-daemon-driver-storage-gluster = %{version}-%{release}
+    %endif
+    %if %{with_storage_rbd}
+    Requires: libvirt-daemon-driver-storage-rbd = %{version}-%{release}
+    %endif
+    %if %{with_storage_sheepdog}
+    Requires: libvirt-daemon-driver-storage-sheepdog = %{version}-%{release}
+    %endif
+    %if %{with_storage_zfs}
+    Requires: libvirt-daemon-driver-storage-zfs = %{version}-%{release}
+    %endif
+    
+*libvirt-daemon-driver-qemu:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-driver-lxc:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    
+libvirt-daemon-driver-vbox:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-driver-libxl:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-libs = %{version}-%{release}
+    
+libvirt-daemon-qemu:(就是qemu tcg)
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-qemu = %{version}-%{release}
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+    
+*libvirt-daemon-kvm:(就是qemu kvm)
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-qemu = %{version}-%{release}
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+
+libvirt-daemon-lxc:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-lxc = %{version}-%{release}
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+    
+libvirt-daemon-xen:
+    Requires: libvirt-daemon = %{version}-%{release}
+        %if %{with_libxl}
+    Requires: libvirt-daemon-driver-libxl = %{version}-%{release}
+        %endif
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+libvirt-daemon-vbox:
+    Requires: libvirt-daemon = %{version}-%{release}
+    Requires: libvirt-daemon-driver-vbox = %{version}-%{release}
+    Requires: libvirt-daemon-driver-interface = %{version}-%{release}
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nodedev = %{version}-%{release}
+    Requires: libvirt-daemon-driver-nwfilter = %{version}-%{release}
+    Requires: libvirt-daemon-driver-secret = %{version}-%{release}
+    Requires: libvirt-daemon-driver-storage = %{version}-%{release}
+
+*libvirt-client:
+    Requires: %{name}-libs = %{version}-%{release}
+    %if %{with_bash_completion}
+    Requires: %{name}-bash-completion = %{version}-%{release}
+    %endif
+   
+*libvirt-admin:
+    Requires: %{name}-libs = %{version}-%{release}
+    %if %{with_bash_completion}
+    Requires: %{name}-bash-completion = %{version}-%{release}
+    %endif
+    
+libvirt-wireshark:
+    Requires: %{name}-libs = %{version}-%{release}
+    
+libvirt-login-shell:(用于连接LXC container)
+    Requires: %{name}-libs = %{version}-%{release}
+    
+libvirt-devel:
+    Requires: %{name}-libs = %{version}-%{release}
+    
+libvirt-lock-sanlock:
+    Requires: %{name}-daemon = %{version}-%{release}
+    Requires: %{name}-libs = %{version}-%{release}
+    
+*libvirt-nss:
+    Requires: libvirt-daemon-driver-network = %{version}-%{release}
+
+
+B、FQA
+    1. Q:为什么执行virsh命令卡住，没有返回
+       A:virsh命令连接libvirtd-server，可能当前已连接的客户端达到了nclients_max值
+         可通过virt-admin查看

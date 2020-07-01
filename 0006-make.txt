@@ -1,0 +1,173 @@
+一、安全编程
+原文（https://dwheeler.com/secure-programs/Secure-Programs-HOWTO/index.html）
+阅读记录（自版本v3.72，2015-09-19）
+
+1. 简介
+    略
+2. 背景
+    略
+10. C语言安全编程
+    1. 推荐普通应用程序使用更高级的语言编程，而不是C。
+    2. 访问不存在或者已释放的指针、两次free操作
+    3. Linux libc（高于5.4.23版）和GNU libc（2.x版）支持设置MALLOC_CHECK_ 以允许
+       上面一些问题出现，而不会停止程序运行。
+       MALLOC_CHECK_ == 0  堆损坏将被忽略
+       MALLOC_CHECK_ == 1  堆损坏在stderr上打印诊断信息
+       MALLOC_CHECK_ == 2  堆损坏将立即调用abort()
+    4. 有很多工具可以检测这个问题，Electric Fence和Valgrind
+    5. 攻击者可能会利用未使用的内存来创建拒绝服务
+    6. 声明类型时，请尽可能严格。
+       -使用“枚举”来定义枚举值（而不只是char、int）在switch语句中，
+           可以使用编译器确定是否已涵盖所有合法值。
+       -如果值不能为负，则在适当的地方使用“无符号”类型。
+    7. char可以是有符号的也可以是无符号的，体现在转换成整数后的值
+        char a=0x80;
+        unsigned char b=0x80;
+        printf("char c=%d\n", a); ==》-128 ??? gcc用-funsigned-char特性解决此问题
+        printf("char c=%d\n", b); ==》128
+        
+    8. C对类型检测相当宽松，因此需要主动提高它们的检查级别，消除警告
+        gcc -Wall -Wpointer-arith -Wstrict-prototypes -O2（请至少包含此编译标志）
+
+二、编译工具
+*.c        *.i        *.s      *.o        app
+    预处理  ->  编译  ->  汇编  ->  链接
+gprof (display call graph profile data)
+    s1. gcc -pg main.c 加-pg
+    s2. ./a.out 生成gmon.out文件
+    s3  gprof a.out gmon.out
+gcov (coverage testing tool)
+    s1. gcc -fprofile-arcs -ftest-coverage main.c 加两个参数，生成main.gcno
+    s2. ./a.out 生成main.gcda文件（gcno和gcda是gcov引用的关键文件）
+    s3. gcov main.c 生成main.c.gcov显示每个函数调用情况
+    
+gcc (GNU project C and C++ compiler)
+    #gcc -S a.c (预处理->编译)
+    #gcc -c a.c (预处理->编译->汇编)
+    #gcc main.c -DCONFIG_QEMU_CONFDIR=\"/opt/lessons\"  (外部宏定义)
+
+    #gcc a.c -o app (预处理->编译->汇编->链接)
+    
+as (the portable GNU assembler)
+    将汇编源码翻译成机器指令
+    #as a.s -o a.o (汇编)
+    #gcc -c a.s -o a.o等价命令
+    
+ld (The GNU linker)
+    将多个目标文件链接起来，符号_start在某个文件中，为程序入口
+    #ld a.o [b.o c.o] -o app (链接)
+    #gcc a.o [b.o c.o] -o app 等价命令
+nm (list symbols from object files)
+    #nm app (查看symbols)
+strip (Discard symbols from object files)
+    #strip app (删除symbols)
+    #file a.out 查看
+size (list section sizes and total size)
+    #size  a.out 
+    text    data     bss     dec     hex filename
+    1143     540       4    1687     697 a.out
+    
+objdump (display information from object files)
+    #objdump -D a.out > a.info
+    
+readelf (Displays information about ELF files)
+    #readelf -a a.out
+elfedit (Update the ELF header of ELF files)
+    #...
+strings (print the strings of printable characters in files)
+    查找任意类型文件的字符串
+    #strings a.out
+
+c++/g++/c++filt/cpp(略)
+    
+addr2line (address to line)
+    s1. 运行错误程序,./a.out
+        1 #include <string.h>
+        2 int main()
+        3 {
+        4     int a;
+        5     a = 100/0;
+        6 }
+    s2. dmesg查看错误的ip地址
+        trap divide error ip:400571 sp:7ffd09d95470 error:0 in a.out
+    s3 地址转行号
+    # addr2line -e /opt/openwrt/a.out 400571
+    /opt/openwrt/main.c:5
+    
+ar (create, modify, and extract from archives)
+    # ar -r libabc.a a.o 添加a b c d
+    # ar -r libabc.a b.o c.o d.o
+    # ar -d libabc.a d.o 删除d
+    # ar -t libabc.a 查看
+    a.o
+    b.o
+    c.o
+    
+ranlib (generate index to archive)
+    unix需要ranlib这步，linux已经集成到ar中因此可以忽略
+    
+
+三、ELFv1.2规范
+1. ELF(Executable and Linking Format)也被称为Object文件，主要分成三类：
+    1. Relocatable file
+        .o .a用于静态链接
+    
+
+    2. Executable file
+        a.out等程序；
+        link editor将多个Relocatable file链接成一个Executable file；
+        每个Relocatable file内容会拷贝到Executable file中；
+        可执行文件有两种，Executable file或者脚本，但是bash、sh等是Executable file；
+
+    3. Shared object file
+        共享库文件，也成为动态库文件，一般名为 xxx.so;
+        如果都是拿Relocatable file链接成Executable file，会浪费磁盘和内存空间；
+        link editor将Relocatable file和Shared object file链接成一个Executable file；
+        运行时，dynamic linker将一个Executable file和多个Shared object file映射成一个进程镜像；
+    
+范例1、查看一个Object是哪种类型的
+#file main.o
+main.o: ELF 64-bit LSB relocatable
+
+#file a.out
+a.out: ELF 64-bit LSB executable
+
+#file /lib64/libspice-server.so.1.8.0 
+/lib64/libspice-server.so.1.8.0: ELF 64-bit LSB shared object
+
+2. ELF内部结构：
+        Linking View                    Execution View
+   +-----------------------+      +-----------------------+
+   |        ELF header     |      |        ELF header     |
+   +-----------------------+      +-----------------------+
+   | program header table  |      | program header table  |
+   |        optional       |      +-----------------------+
+   +-----------------------+      |       segment 1       |
+   |       section 1       |      +-----------------------+
+   +-----------------------+      |         .....         |
+   |         .....         |      +-----------------------+
+   +-----------------------+      |       segment n       |
+   |       section n       |      +-----------------------+
+   +-----------------------+      | section header table  |
+   | section header table  |      |        optional       |
+   +-----------------------+      +-----------------------+
+1). ELF header (#readelf -h a.out)
+    Magic：7f 45 4c 46 ... xx(OS和GCC辨别是否为ELF文件，45|4c|46为'ELF'的ASCII码)
+    version：ELF 版本，目前均为1
+    Entry point address：程序的入口地址（_start的虚拟地址），.o文件没有入口，故为0
+    Start of program headers: program header table位置
+    Start of section headers: section header table位置
+    Size of this header: ELF header字节数
+    Size of program headers: program header table字节数
+    Number of program headers: program header的条目数
+    Size of section headers: section header table字节数
+    Number of section headers: section header的条目数
+    Section header string table index: ？？？？
+    ....
+    
+2). Program Header table(#readelf -l a.out )
+    
+3). sections
+
+4). section header table
+   

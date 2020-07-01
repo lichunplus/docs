@@ -3,6 +3,11 @@
 时钟源：提供时钟的设备，操作系统可能同时使用多个时钟源。
 RTC: Real Time Clock
 
+时钟观：
+ - computer clock, 例如2008年8月8日 20:08:08
+ - hardware clock, 类似晶振，它提供数字设备的信号
+ - wall-clock(real world time),充当秒表功能，计算某段指令运行耗时
+
 一、时钟设备(PIT(8254)|RTC|TSC|LAPIC Timer)
 PIT(8254):
     频率：1000HZ
@@ -52,18 +57,3 @@ windows:  通常请求64~100HZ，具体取决于使用哪中HAL(???),windows允�
           VMWARE提供TimeTrackerStats工具确定当前系统时钟频率。
         
 linux:
-
-
-四、Hyper-V
-QEMU支持相关参数：
--cpu ...,hv_time,
-        hv_relaxed,
-        hv_vapic,
-        hv_spinlocks=0x1fff,
-        hv_vpindex,
-        hv_synic,
-        hv_stimer,
-        hv_vendor_id=KVM
-QEMU/KVM推荐： -cpu ...,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time
-
-

@@ -1,0 +1,51 @@
+术语：
+GUI: Graphical User Interface
+SDL: Simple DirectMedia Layer, 开源|跨平台(封装windows的DirectX、封装linux的Xlib、mac)
+GTK: GIMP Toolkit,同样也支持windows和mac,使用不广, 它是Linux应用程序的主流图形库
+DirectX: 是由微软公司创建的多媒体编程接口，是一种应用程序接口（API）
+
+一、架构模型
+
+
+二、X Windows System(X11, or simply X)
+    +-------+ +------+
+    | GTK+  | |  QT  |
+    |       | |      |
+    +---+---+ +---+--+
+        |         |
+        |         |
+    +---+---------+----------------------+
+    |      client libraries              |
+    |          Xlib等                    |
+    +----------^-------------------------+
+               |protocol
+               |
+    +----------v-----------+   +---------+
+    |     display-server   +<--+ windows |
+    |     Xorg等          |   | manager |
+    +--+-------^-------^---+   +---------+
+       |       |       |
+     显卡    鼠标    键盘
+
+DisplayServer:
+ - Xorg: 开源主流, 配置文件/etc/X11/xorg.conf, 日志文件/var/log/Xorg.N.log
+         #yum install xorg-x11-apps && xclock
+ - XFree86: 因为License问题被社区抛弃
+
+
+三、图形库（GTK|SDL|DirectX）
+
+
+
+附件A： 问题记录
+0. 执行startx, 没有任何错误提示
+   解决: 在本地系统上运行“ startx”，则图形系统或Windows Manager可能会掩盖错误消息。需要远程SSH执行
+1. 执行startx，提示错误:error: /usr/lib64/xorg/modules/drivers/modesetting_drv.so: undefined symbol: drmModeListLessee
+   解决： yum update libdrm
+2. 如何在文本模式和图形模式之间切换?
+   - 手动： 执行startx
+   - 自动： #cat /etc/inittab说明
+3. 执行startx, 提示xauth:  file /root/.serverauth.2554 does not exist
+   解决： #vi /usr/bin/startx 将enable_xauth=1改为0,禁用认证
+4. 执行xinit，提示xterm: cannot load font '-misc-fixed-medium-r-semicondensed--13-120-75-75-c-60-iso10646-1'
+   解决: 需要安装缺失的图形字体, yum install xorg-x11-fonts*

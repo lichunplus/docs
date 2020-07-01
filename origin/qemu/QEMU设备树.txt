@@ -1,0 +1,286 @@
+*object          *interface
+│  type=str      │  
+|
+├── *device
+│     realized=bool
+│     hotpluggable=bool
+|     hotplugged=bool
+|     parent_bus=link
+
+*cpu
+│
+├── *i386-cpu(x86_64-cpu)
+|    |
+|    |  vendor = "AuthenticAMD" | "GenuineIntel"
+|    |  family=类别
+|    |  model=型号
+|    |  stepping=N步进(硬件层面的修订次数)
+|    |  model_id="A STRPING HERE"
+|    |
+│    ├── max
+|    |   ├── host(KVM可能过滤掉一些不支持虚拟化的特性)
+|    |
+│    ├── base
+│    |
+│    ├── qemu64
+│    ├── phenom
+│    ├── core2duo
+│    ├── kvm64
+│    ├── qemu32
+│    ├── kvm32
+│    ├── coreduo
+│    ├── 486
+│    ├── pentium
+│    ├── pentium2
+│    ├── pentium3
+│    ├── athlon
+│    ├── n270
+│    ├── Conroe
+│    ├── Penryn
+│    ├── Nehalem
+│    ├── Nehalem-IBRS
+│    ├── Westmere
+│    ├── Westmere-IBRS
+│    ├── SandyBridge
+│    ├── SandyBridge-IBRS
+│    ├── IvyBridge
+│    ├── IvyBridge-IBRS
+│    ├── Haswell-noTSX
+│    ├── Haswell-noTSX-IBRS
+│    ├── Haswell
+│    ├── Haswell-IBRS
+│    ├── Broadwell-noTSX
+│    ├── Broadwell-noTSX-IBRS
+│    ├── Broadwell
+│    ├── Broadwell-IBRS
+│    ├── Skylake-Client
+│    ├── Skylake-Client-IBRS
+│    ├── Skylake-Server
+│    ├── Skylake-Server-IBRS
+│    ├── Opteron_G1
+│    ├── Opteron_G2
+│    ├── Opteron_G3
+│    ├── Opteron_G4
+│    ├── Opteron_G5
+│    ├── EPYC
+│    ├── EPYC-IBPB
+│
+│
+├── *powerpc-cpu
+│ 
+
+*device
+│    
+├── *virtio-serial-port
+│   ├── virtserialport        ---->/dev/hvcN     阻塞
+│          ├── virtconsole    ---->/dev/vport1pN 非阻塞，系统会监听
+│    
+├── *virtio-device
+│   ├── vhost-user-blk
+│   ├── vhost-vsock-device
+│   ├── virtio-9p-device
+│   ├── virtio-balloon-device
+│   ├── virtio-blk-device
+│   ├── virtio-crypto-device
+│   ├── virtio-gpu-device
+│   ├── virtio-net-device
+│   ├── virtio-rng-device
+│   ├── virtio-serial-device
+│   ├── *virtio-scsi-common
+│   ├   ├── virtio-scsi-device
+│   ├   ├── *vhost-scsi-common
+│   ├       ├── vhost-scsi
+│   ├       ├── vhost-user-scsi
+│   ├       
+│   ├── *virtio-input-device
+│           ├── virtio-input-host-device
+│           ├── *virtio-input-hid-device
+│               ├── virtio-keyboard-device
+│               ├── virtio-mouse-device
+│               ├── virtio-tablet-device
+│
+├── *R
+│   ├── *virtio-pci
+│   ├   ├── virtio-crypto-pci
+│   ├   ├── virtio-gpu-pci
+│   ├   ├── virtio-9p-pci
+│   ├   ├── virtio-blk-pci
+│   ├   ├── vhost-user-blk-pci
+│   ├   ├── virtio-scsi-pci
+│   ├   ├── vhost-scsi-pci
+│   ├   ├── vhost-user-scsi-pci
+│   ├   ├── vhost-vsock-pci
+│   ├   ├── virtio-balloon-pci
+│   ├   ├── virtio-serial-pci
+│   ├   ├── virtio-net-pci
+│   ├   ├── virtio-rng-pci
+│   ├   ├── *virtio-input-pci
+│   ├       ├── virtio-input-host-pci
+│   ├       ├── *virtio-input-hid-pci
+│   ├           ├── virtio-keyboard-pci
+│   ├           ├── virtio-mouse-pci
+│   ├           ├── virtio-tablet-pci
+│   ├── e1000e
+│   ├── ich9-ahci
+│   .
+│   .
+│   .
+│   
+├── *scsi-device
+│   ├── *virtio-pci
+│       ├── *scsi-disk-base
+│       ├   ├── scsi-hd (用于-drive if=none,id=hd,file=/path/to/test.img)
+│       ├   ├── scsi-cd (用于-drive if=none,id=cd,file=/path/to/boot.iso)
+│       ├   ├── scsi-block
+│       ├   ├── scsi-disk  drive使用文件
+│       ├   
+│       ├── scsi-generic  drive使用/dev/sgN设备
+
+hda-audio
+│    
+├── hda-duplex
+├── hda-output
+├── hda-micro
+
+accel
+│    
+├── hax
+├── hvf
+├── kvm
+├── qtest
+├── whpx
+├── xen
+├── whpx
+
+
+*bus
+│    
+├── apple-desktop-bus(ads)
+├── aux-bus
+├── usb-bus
+├── i2c-bus
+├── sd-bus
+├── virtual-css-bus
+├── ccid-bus
+├── s390-sclp-events-bus
+├── floppy-bus
+├── HDA
+├── IndustryPack
+├── ISA
+├── PCI
+├── PCIE
+├── IDE
+├── s390-pcibus
+├── SCSI
+├── spapr-vio-bus
+├── SSI
+├── System
+├── virtio-bus
+├── virtio-serial-bus
+├── xen-sysbus
+
+
+####io subsystem   ###internal API abstracting an I/O channel
+上层看到的qio-channel数据结构是：QIOChannel
+上层使用xxx ??????????????????????????????????????????????????????????????什么是qiochannel context???
+基本用法：
+
+*qio-channel(io/channel.*)
+├── qio-channel-buffer(io/channel-buffer.*)
+├── qio-channel-command(io/channel-command.*)
+├── qio-channel-file(io/channel-file.*)
+├── qio-channel-socket(io/channel-socket.*)
+├── qio-channel-tls(io/channel-tls.*)
+├── qio-channel-websock(io/channel-websock.*)
+├── qio-channel-rdma(migration/rdma.*)
+
+ unit watch
+
+附：一个chardev底层可能由两个QIOChannel实现，一个用于读，另外一个用于写。
+<pm215> lichun: I think QIOChannel is an internal API abstracting an I/O 
+        channel, but a chardev is a user-facing abstraction for something that 
+        users can connect other devices (eg emulated serial port) to
+        so for instance the user can create a 'pipe' chardev to connect the 
+        guest serial port to, and under the hood the pipe chardev is actually 
+        implemented with a QIOChannel for the read direction and another 
+        QIOChannel for the write direction.
+
+####chardev subsystem  ###"a user-facing abstraction" 抽象用户能连接的其他设备
+上层看到的chardev数据结构是：CharBackend
+上层使用chardev/char-fe.*提供的API使用字符设备
+基本用法：
+qemu -device xxx,chardev=chr-test  -chardev beckend,id=chr-test
+{
+    CharBackend chr;
+    qemu_chr_fe_init(&chr, chr-test);
+    qemu_chr_fe_wait_connected(&chr);
+    qemu_chr_fe_set_handlers(&chr,
+                            IOCanReadHandler *fd_can_read,
+                            IOReadHandler *fd_read,
+                            IOEventHandler *fd_event,
+                            BackendChangeHandler *be_change,
+                            void *opaque,
+                            GMainContext *context,
+                            bool set_open);
+}
+*chardev(chardev/char.*)
+│
+├── chardev-vc(ui/gtk.* & ui/console.*)
+│
+├── chardev-hci(hw/bt/hci-csr.*)
+│
+├── *chardev-win(chardev/char-win.*)
+│   ├── chardev-console(chardev/char-console.*)
+│   ├── chardev-file(chardev/char-file.*)
+│   ├── chardev-pipe(chardev/char-pipe.*)
+│   ├── chardev-serial(chardev/char-serial.*)
+│
+├── *chardev-fd(chardev/char-fd.*)
+│   ├── chardev-file(chardev/char-console.*)
+│   ├── chardev-pipe(chardev/char-pipe.*)
+│   ├── chardev-serial(chardev/char-serial.*)
+│   ├── chardev-stdio(chardev/char-stdio.*)
+│
+├── *chardev-win-stdio(chardev/char-win-stdio.*)
+│   ├── chardev-stdio(chardev/char-stdio.*)
+│
+├── chardev-mux(chardev/char-mux.*)
+├── chardev-null(chardev/char-null.*)
+├── chardev-parallel(chardev/char-parallel.*)
+├── chardev-ringbuf(chardev/char-ringbuf.*)
+│   ├── chardev-memory(chardev/char-ringbuf.*)
+│
+├── chardev-socket(chardev/char-socket.*)
+├── chardev-udp(chardev/char-udp.*)
+├── chardev-pty(chardev/char-pty.*)
+├── chardev-msmouse(chardev/msmouse.*)
+├── chardev-testdev(chardev/testdev.*)
+├── chardev-wctablet(chardev/wctablet.*)
+├── chardev-braille(chardev/baum.*)
+├── *chardev-spice(chardev/spice.*)
+│   ├── chardev-spicevmc(chardev/spice.*)
+│   ├── chardev-spiceport(chardev/spice.*)
+├── ***tty??? 找不到
+├── ***parport??? 找不到
+
+####hw/watchdog/* 
+*sys-bus-device
+│
+├── aspeed.wdt(hw/watchdog/wdt_aspeed.*)
+│   ├── aspeed.wdt-ast2400
+│   ├── aspeed.wdt-ast2500
+│   ├── aspeed.wdt-ast2600
+│
+├── diag288(for s390x, hw/watchdog/wdt_diag288.*)
+│
+├── ib700(ISR, hw/watchdog/wdt_ib700.*)
+│
+├── imx2-watchdog(hw/watchdog/wdt_imx2.*)
+│
+├── i6300esb(PCI, hw/watchdog/wdt_i6300esb.*)
+
+查看支持哪些看门狗硬件(默认没有看门狗设备):
+#qemu-system-x86_64 -watchdog ?
+        ib700       iBASE 700
+        i6300esb    Intel 6300ESB
+

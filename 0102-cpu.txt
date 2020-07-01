@@ -1,0 +1,61 @@
+术语：
+半虚拟化接口通道，和体系结构相关，以下是X86架构的通道：
+零、hypercalls(非架构相关)
+
+一、CPUID instruction,一般用于静态值获取(特性和版本号)
+格式：cpuid function *eax *ebx *ecx *edx 
+常见function用例：前两个为Vendor-Neutral,实际似乎只有第一个
+KVM_CPUID_SIGNATURE(0x40000000)  ebx|ecx|edx返回字符串"KVMKVMKVM",表示运行在KVM平台上
+                                            返回字符串"Microsoft Hv",表示运行在Hyper-V平台上
+                                 eax返回最大受支持的function值，缺省(0x0)则认为是0x40000001
+KVM_CPUID_FEATURES(0x40000001)   eax|ebx|ecx特征位:
+                                   0  KVM_FEATURE_CLOCKSOURCE
+                                   1  KVM_FEATURE_NOP_IO_DELAY
+                                   2  KVM_FEATURE_MMU_OP
+                                   3  KVM_FEATURE_CLOCKSOURCE2
+                                   4  KVM_FEATURE_ASYNC_PF 
+                                   5  KVM_FEATURE_STEAL_TIME
+                                   6  KVM_FEATURE_PV_EOI
+                                   7  KVM_FEATURE_PV_UNHALT
+                                   9  KVM_FEATURE_PV_TLB_FLUSH
+                                   10 KVM_FEATURE_ASYNC_PF_VMEXIT
+                                   11 KVM_FEATURE_PV_SEND_IPI
+                                   12 KVM_FEATURE_POLL_CONTROL
+                                   13 KVM_FEATURE_PV_SCHED_YIELD
+                                   14 KVM_FEATURE_ASYNC_PF_INT
+                                   15 KVM_FEATURE_MSI_EXT_DEST_ID
+                                   24 KVM_FEATURE_CLOCKSOURCE_STABLE_BIT
+                                 edx征位:
+                                   0  KVM_HINTS_REALTIME
+0x40000002
+    Hyper-V::返回Hyper-V版本号信息
+0x40000003
+    Hyper-V::返回Hyper-V Feature,Hyper-V实现的可能功能通过Feature暴力给OS使用
+0x40000004
+    Hyper-V::OS可能可以有多个方式实现某特定的功能，此调用返回Hyper-V推荐使用的方式(性能优化)
+0x40000005
+    Hyper-V::Hyper-V的limits,比如最大支持vCPU数量等
+0x40000006
+    Hyper-V::返回Hyper-V Feature,与0x40000003相比，这些特性依赖物理硬件支持
+0x40000007
+    Hyper-V::向root-partition(宿主机系统，相对child-partition)暴露可以使用的CPU管理功能特性
+0x40000008
+    Hyper-V::暴露支持的shared-virtual-memory特性
+0x40000009
+    Hyper-V::嵌套虚拟化特性
+0x4000000A
+    Hyper-V::嵌套虚拟化特性
+
+
+二、MSRs(model-specific registers),一般用于动态值查询和配置
+HV_X64_MSR_GUEST_OS_ID(0x40000000), Hyper-V要求GuestOS必须上报签名和版本号(写在这个MSR)
+             63       62:48     47:40       39:32           31:24            23:16           15:0       
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+
+        | OS_Type | Vendor_ID | IS_ID | Major_Version | Minor_Version | Service_Version | Build_Number |
+        +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-++-+-+-+-+-+-+-+-+
+         0:闭源OS
+         1:开源OS
+
+三、Memory-mapped registers,
+
+四、Processor interrupts,

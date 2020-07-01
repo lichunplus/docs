@@ -1,0 +1,68 @@
+QWEBIRC命令:
+ACCEPT          ADMIN           CHALLENGE
+CMODE           ERROR                       
+INVITE          ISON                            
+KNOCK           LINKS         
+MAP             MOTD            NAMES   
+NOTICE          OPER            PART            PASS
+PING            PONG            PRIVMSG         
+STATS           UMODE
+USER            USERHOST        WHOWAS
+
+JOIN <#channel1[,#channel2,#channel3...]> [<key>{,<key>}] 
+  $/JOIN #qemu,#virt     #同时加入#qemu和#virt两个频道
+
+LIST [options]
+  $/LIST                 #列出IRC-SERVER中所有的频道(除掉+s@channel)信息
+  $/LIST                 #数据量可能会很多，再此执行/LIST将取消请求
+
+VERSION [servername]
+  $/VERSION              #查看当前连接的IRCD服务版本信息
+
+TOPIC <#channel> :[new topic]
+  $/TOPIC #qemu :5.2版本发布拉。    #修改或发布公告，需要权限(+t@channel)
+  $/TOPIC #qemu :                   #删除某个房间的公告
+
+WHOIS [remoteserver|nick] nick
+  $/WHOIS aw   #查看用户aw的信息
+
+WHO <#channel|user>
+  $/who #qemu aw  #查看用户aw的信息
+
+HELP [topic]
+  $/HELP PING  #显示HELP命令帮助信息
+
+KICK <channel> <nick> :[msg]
+  $/KICK zhansan   #将zhansan剔出房间.
+
+QUIT :[quit message]
+  $/QUIT    #断开和IRCD的连接
+
+AWAY :[MSG]
+  $/AWAY :我睡觉了 拜拜  #进入离开状态,whois等命令可以查询到你处于AWAY状态.
+  $/AWAY                 #解除离开状态
+
+NICK <nickname>
+  $/NICK lisi    #将昵称修改为lisi。
+
+TIME [server]
+  $/time    #获取当前IRCD服务器的系统时间.
+
+USERS [remoteserver]
+  $/USERS  $查询当前服务器本地用户和全局用户数量,返回信息如下
+  Current local users: 140  Max: 298
+  Current global users: 15404  Max: 16138
+
+LUSERS [mask] [remoteserver]
+  $/lusers  $查看当前所有服务器信息
+
+INFO
+  $/INFO  #查询当前ircd版本信息,QWEBIRC似乎改为客户端版本信息
+
+-------------------------------------------------------------------------------
+
+CLEAR
+  $/CLEAR   #清除当前频率显示内容。
+
+SAY
+  $/SAY 你们好呀  #发送一条消息

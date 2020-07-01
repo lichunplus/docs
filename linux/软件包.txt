@@ -1,8 +1,0 @@
-RPM包规则
-
-%package $SUBNAME
-Summary: Server side daemon and supporting files for libvirt library
-Requires: Requires: %{name}-libs = %{version}-%{release}
-Requires: /usr/bin/nc
-Requires: polkit >= 0.112
-

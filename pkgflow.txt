@@ -1,5 +1,0 @@
-一. 网卡收包三种方式：
-1 早期        每个包都产生一个中断，cpu去处理
-2 netpoll     CPU主动去轮询
-3 NAPI        上述结合
-sys/net/core/netdev_max_backlog napi方式收到这么多个包后会打开中断

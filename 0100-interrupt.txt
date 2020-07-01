@@ -1,0 +1,242 @@
+术语：
+中断：提供一种打断CPU顺序执行的机制
+APIC: Advanced Programmable Interrupt Controller
+中断源：表示中断CPU运行的直接来源，比如各个IRQ#N（中断控制器发出）、IPI、REST等
+PRT: Programmable Redirection Table
+NMI：Non-Maskable Interrupt
+一、中断设备(8259A|LAPIC|IOAPIC)
+PC中断的两个方案对比(不能同时工作)：
+方案一：使用8259A，所有中断都由CPU0处理，
+    中断线路:  PIC Intel 8259          IRQ0 - IRQ7
+               Two PIC Intel 8259      IRQ0 - IRQ15
+    中断路由：物理接线决定了由哪个CPU处理（通常是CPU0）
+    中断优先级：IRQ0>IRQ1>....>IRQ7
+    工作机制： ？？？？p25
+   +----------------------------------+
+   |   cpu                            |
+   +----^--------------^--------------+
+        |INTR          |
+        |       <-^----v-----^------>io-bus
+        |         |          |
+  +-------------------------------------------+
+  |     |INT      |          |                |
+  | +-------------v--+   +---v-------------+  |
+  | |  Master-8259A  |   |    Slave-8259A  |  |
+  | |                |   |                 |  |
+  | +----------------+   +-----------------+  |
+  |  0|1|2|3|4|5|6|7|  INT|0|1|2|3|4|5|6|7|   |
+  |   ^ ^ ^ | ^ ^ ^ ^     | ^ ^ ^ ^ ^ ^ ^ ^   |
+  |   | | | | | | | |     | | | | | | | | |   |
+  |   | | | +-------------+ | | | | | | | |   |
+  |   | | |   | | | |       | | | | | | | |   |
+  +-------------------------------------------+
+      | | |   | | | |       | | | | | | | |
+      | | |   | | | |       | | | | | | | |
+      + + +   + + + +       + + + + + + + +
+PIRQ# 0 1 2   4 5 6 7       8 9 1 1 1 1 1 1
+                                0 1 2 3 4 5
+
+方案二：使用LAPIC+IOAPCI，中断请求可路由到不同CPU处理，可编程的中断优先级
+       +------------+                +------------+
+       |   cpu #1   |                |   cpu #2   |
+       +------------+                +------------+
+       | local apic |                | local apic |
+       +--^-----^---+                +--^------^--+
+          |IPIs |Interrupt              |IPIs  |Interrupt
+          |     |Message                |      |Message
+<---------v--^--v-----------------^-----v------v--------->
+             |                    |      system bus
+             |Interrupt           |
+             |Message             |
+   +----------------------------------------------+
+   |         |                    |               |
+   |   +-----v-----------+   +----v------+        |
+   |   |     io apci     |   |  bridge   |        |
+   |   +-+-----------^-^-+   +---^-------+        |
+   |     ^           | |         |                |
+   |     |           | |     <---v-------> pci bus|
+   |     |           | |                          |
+   |     |           | |                          |
+   |     |           | |                          |
+   |     |           | |                          |
+   +----------------------------------------------+
+         |           | |            system chip set
+         |           | |
+         |           | +-----+PIRQ#A
+         |           +-------+PIRQ#B
+         |                    ...
+         +-------------------+PIRQ#N 
+1. I/O APIC
+    中断线路: 通常提供24条中断线路(Max 255)。可集成多个IOAPIC提供更多的中断线路
+    中断路由：每个IOAPCI都集成一个中断重定向表(PRT寄存器)，通过编程将中断请求路由
+              到不同的CPU,实现负载均衡。
+    中断优先级：由中断重定向表控制(PRT,可编程), IOAPIC在重定向表中选择相应的条目，
+                并使用该条目中的信息来格式化中断请求消息。重定向表中的每个条目都
+                可以单独编程以指示边沿/电平触发方式，中断向量和优先级，以及如何
+                选择处理器（静态或动态）。
+2. LAPIC
+    位于：  FEE00xxx（built-in CPU core，用于接收中断(也可以产生timer),
+            在SMP中，多个LAPIC连接在一起可以相互通信）
+    
+历史上两片8259A提供的lines计算机如下分配（APIC方案基本继承了这个分配规则）：
+    IRQ 0	System timer. Reserved for the system. Cannot be changed by a user.
+    IRQ 1	Keyboard. Reserved for the system. Cannot be altered even if no keyboard is present or needed.
+    IRQ 2	Second IRQ controller. See below for explanation.
+    IRQ 3	COM 2(Default) COM 4(User)
+    IRQ 4	COM 1(Default) COM 3(User)
+    IRQ 5	Sound card (Sound Blaster Pro or later) or LPT2(User)
+    IRQ 6	Floppy disk controller
+    IRQ 7	LPT1(Parallel port) or sound card (8-bit Sound Blaster and compatibles)
+    IRQ 8	Real time clock
+    IRQ 9	ACPI SCI or ISA MPU-401
+                SCI中断(CPU保留，用于系统控制APM使用)：
+                SMI中断(ACPI-OS约定，用于系统管理ACPI使用)：
+    IRQ 10	Free / Open interrupt / Available
+    IRQ 11	Free / Open interrupt / Available
+    IRQ 12	PS/2 connector Mouse / If no PS/2 connector mouse is used, this can be used for other peripherals
+    IRQ 13	Math co-processor. Cannot be changed
+    IRQ 14	Primary IDE. If no Primary IDE this can be changed
+    IRQ 15	Secondary IDE
+二、PCI interrupt routing（programmable interrupt router(PIR)、IRQ）
+参考：PnP and PCI Interrupts（http://tldp.org/HOWTO/Plug-and-Play-HOWTO-7.html）
+参考：PCI IRQ Routing Table Specification（PCI IRQ Routing Table Specification）
+参考：IRQ steering and device enumeration（http://mysite.verizon.net/~mrscary/devenum.htm）
+参考：PCI interrupt configuration（http://pcmcia-cs.sourceforge.net/ftp/doc/PCMCIA-HOWTO-4.html#ss4.2）
+16个标准IRQs可以设置为PCI模式或者ISA模式，多个PCI或者ISA设备可以共享一个IRQ资源。
+PCI总线系统由两部分组成：
+1. one or more slots，每个slot中包含4个用于中断的pin(INTA#, INTB#, INTC#, INTD#),如下：
+                               ,-.
+                         INTD--| |
+                               |S|
+                         INTC--|l|
+                               |o|
+                         INTB--|t|
+                               |x|
+                         INTA--| |
+                               `-'
+    多个slots相同的INTn#可能是并联起来的。INTA-D发出信号最终会变成PCI芯片组的PIRQn上的信号，取决于主板设计商
+2. PCI Interrupt Router, 包含多个pin(PIRQ1#, PIRQ2#, PIRQ3#, … PIRQn#, There is no PIRQ0#)，
+                         每个pin可能接一组INT#（with PIR）,也可能直接接设备的INT#（without PIR）
+                         具体怎么接取决于芯片组（chip-set）,范例如下：
+           ,-.        ,-.        ,-.        ,-.        ,-.
+ PIRQ4 ----| |-.    ,-| |-.    ,-| |-.    ,-| |--------| |
+           |S|  \  /  |S|  \  /  |S|  \  /  |S|        |S|
+ PIRQ3 ----|l|-. `/---|l|-. `/---|l|-. `/---|l|--------|l|
+           |o|  \/    |o|  \/    |o|  \/    |o|        |o|
+ PIRQ2 ----|t|-./`----|t|-./`----|t|-./`----|t|--------|t|
+           |1| /\     |2| /\     |3| /\     |4|        |5|
+ PIRQ1 ----| |-  `----| |-  `----| |-  `----| |--------| |
+           `-'        `-'        `-'        `-'        `-'
+三、X86中断机制（X86根据CPU处于实模式和保护模式的中断机制不一样）
+1. 实模式下的中断机制(1M寻址空间)
+  中断向量表(IVT):每个vector占4字节,256个中断源,中断号0~255,总大小4×256=1KB(固定于物理地址0x0000~0x03ff)直接
+  提供中断服务程序入口以segment:offset形式提供的,offset在低端,segment在高端.
+  程序可以调用int指令触发任意一个中断, 例如: int 0x80, 触发后CPU自动将EFLAGS|EIP|CS入栈SS:SP
+  然后通过向量号索引IVT得到ISR入口CS:IP,进而进入ISR执行, ISR程序完成后应调用iret指令返回.
+
+2. 保护模式下的中断机制
+    中断描述符表(IDT):每个gate占8字节,256个中断源,中断号0~255,总大小8×256=2KB(64位: 16*256=4k),位于内存，至少要提供前32个表(limit=255=256-1)
+    IDT表地址和长度写到IDTR寄存器(48bit),
+    分成三大类 任务门、中断门、陷阱门.
+  段描述符(8字节)描述一个地址段，存储在GDT表中位于内存，表的物理地址和长度写到GDTR寄存器(lgdt、sgdt指令)，CPU的CS.selector用于选择目标段描述符。
+  段描述符描述(8字节)一个地址段，也存储在LDT表中位于内存，表的物理地址和长度写到LDTR寄存器(lldt、sldt指令)，CPU的CS.selector用于选择目标段描述符。
+  中断描述符(又称gate, 8字节)描述一个中断，存储在IDT表中位于内存，表的物理地址和长度写到IDTR寄存器(lidt、sidt指令)，中断向量(0~255)号用于选择目标中断描述符。
+
+四、Interrupt handlers（）
+现代系统，中断处理程序被分成两部分：
+1. First-Level Interrupt Handler（FLIH、 fast interrupt handlers、top-half）
+2. Second-Level Interrupt Handlers（SLIH、interrupt threads、bottom-half）
+
+五、linux中断管理（/proc/irq/*、/proc/interrupts）
+linux使用struct irq_desc描述一个中断。
+struct irq_desc {
+    irq_flow_handler_t  handle_irq;    /* 中断入口函数，由架构提供实现 */
+                                       /* 它调用chip成员来屏蔽、清除、do-actions、使能中断*/
+    struct irq_chip     *chip;         /* 中断控制器对象 */
+    struct irqaction    *action;       /* 链表，驱动通过request_irq()添加回调函数 */
+    unsigned int        status;        /* IRQ状态 */
+    ...
+    const char          *name;         /* 中断名称 */
+}
+struct irq_chip {
+    const char  *name;
+    unsigned int    (*startup)(unsigned int irq);   #init中断控制器
+    void        (*shutdown)(unsigned int irq);      #finit用中断控制器
+    void        (*enable)(unsigned int irq);        #start中断控制器
+    void        (*disable)(unsigned int irq);       #stop中断控制器
+    void        (*ack)(unsigned int irq);           #响应中断(清除当前的中断)
+    void        (*mask)(unsigned int irq);          #只屏蔽IRQ
+    void        (*mask_ack)(unsigned int irq);      #屏蔽并响应IRQ
+    void        (*unmask)(unsigned int irq);        #取消IRQ屏蔽
+  ....
+};
+struct irqaction {
+    irq_handler_t handler;          #用户注册的中断处理函数
+    unsigned long flags;            #共享中断、电平、边沿触发
+    cpumask_t mask;                 #handler的cpu亲和性
+    const char *name;               #一般写request_irq()调用设备名称
+    void *dev_id;                   #用于共享中断，当硬件支持共享时Linux执行handler会传递正确的dev_id
+    struct irqaction *next;         #同一个IRQ可以关联多个irqaction
+    int irq;                        #中断号
+    struct proc_dir_entry *dir;     #对应/proc/irq/$Number/
+};
+硬件中断==>asm_do_IRQ(IRQ)==>irq_desc[IRQ]->handle_irq()
+                                              |
+                                              |---self.chip.xxx()
+                                              |---do self.actions()
+                                              |---self.chip.xxx()
+设备驱动：
+    request_irq(unsigned int irq,       #IRQ资源号，和硬件连接有关
+                irq_handler_t handler,  #加入到irq_desc->action链表
+                unsigned long irqflags, #SA_INTERRUPT--快速中断，意味着该中断会屏蔽所有中断防止处理期间再次被打断
+                                        #SA_SHIRQ------共享中断，
+                const char devname,     #一般写设备驱动名称，表示此设备驱动有使用这个中断
+                void dev_id)            #表明是哪个设备使用了这个中断，方便free_irq时移除相应的action，软件中断共享的机制
+    
+    free_irq()      #资源释放
+
+新的中断控制器支持通告特定的CPU响应ISR程序，IRQ由哪个CPU响应
+    #cat /proc/irq/3/smp_affinity（可以修改这个值，然后通过/proc/interrupts观察）
+    00000000,00000000,00000000,0000000f
+    # cat /proc/irq/3/smp_affinity_list
+    0-3
+    #cat /proc/irq/default_smp_affinity（如上IRQ亲和哪些CPU,默认来自这个值，ALL Cpus）
+    ffffffff,ffffffff,ffffffff,ffffffff
+#cat /proc/interrupts （通过此简单判断是否启用IO-APIC-level）
+中断源     CPU0       CPU1        中断类型  设备列表
+  0: 1366814704          0          XT-PIC  timer      *(none of those IRQ sources is performance-critical)
+  1:        128        340    IO-APIC-edge  keyboard
+  2:          0          0          XT-PIC  cascade
+  8:          0          1    IO-APIC-edge  rtc
+ 12:       5323       5793    IO-APIC-edge  PS/2 Mouse
+ 13:          1          0          XT-PIC  fpu
+ 16:   11184294   15940594   IO-APIC-level  Intel EtherExpress
+ 20:    8450043   11120093   IO-APIC-level  megaraid
+ 30:      10432      10722   IO-APIC-level  aic7xxx
+ 31:         23         22   IO-APIC-level  aic7xxx
+NMI:          0
+ERR:          0
+LOC:   88328499   86347316   Local timer interrupts     #local apic timer
+中断源: 个数取决于中断控制器类型和数量，CPU类型。
+CPU: 硬中断被响应的次数，可以配置CPU亲和性。
+中断类型（x86）：1. XT-PIC（This is the old AT computer interrupts.）
+                 2. IO-APIC-edge（边沿触发，类似按键）
+                 3. IO-APIC-level（电平触发，类似开关）
+                 4. IO-APIC-fasteoi（新的中断控制器需要ISR回应EIO(end of interrupt)）
+设备列表：多个设备可能共享一个IRQ，设备驱动需要处理这种情况。
+六、中断共享
+linux软件全面支持共享一个IRQ（即使硬件不支持如ISA）：
+    表示多个设备驱动可以通过request_irq(irq, dev_id1)
+                            request_irq(irq, dev_id2)关注同一个irq
+硬件有可能支持多个设备共享一个PIRQ，比如PCI，linux能通过传递相应的device_id区分
+如果硬件不支持区分，需要中断服务程序去查询设备状态字寄存器。
+六、中断源
+NMI：linux处理NMI：通常预留给硬件监测装置，中断服务程序完成关键状态转存以及IO设
+     备关闭。LAPIC和IOAPIC支持配置周期性触发NMI，linux内核NMI服务程序检测到中断
+     没有变化就触发PANIC,这个机制叫NMI Watchdog。
+     windows处理NMI：BSoD,提示"STOP Error 0x80：NMI_HARDWARE_FAILURE",没有coredump
+七、虚拟化中的中断设备
+QEMU中可以使用的APCI设备有几个实现：
+1. kvm-apic(KVM实现)
+2. apic(qemu模拟实现)
+3. xen-apic(XEN实现)

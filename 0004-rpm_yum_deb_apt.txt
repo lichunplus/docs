@@ -1,0 +1,83 @@
+1.  rpm & dpkg
+  #查看已安装
+    # rpm -qa | grep xxx  #查看已安装的rpmb包
+    # dpkg –l | grep xxx  #查看已安装的rpmb包
+  #卸载单个包
+    # rpm –e xxx
+    # dpkg -P xxx         #-P删除配置文件，-r保留配置文件
+  #安装单个包
+    # rpm –ivh xxx.rpm
+    # dpkg –i  xxx.deb
+  #查看软件包，包含文件目录树
+    #安装前               # dpkg –c xxx.deb   #rpm -qpl xxx.rpm
+    #安装后               # dpkg –L xxx       #rpm -ql rcos-qemu
+  #查看文件归属哪个软件包
+    # rpm –qf fileurl
+    # dpkg –S fileurl
+2.  yum & apt
+  #查看可安装
+    # yum list | grep xxx   注：查看其他版本#yum --showduplicates list available kernel-devel
+    # apt list | grep xxx
+  #安装
+    远程 # apt install xxx      #apt-get install xxx.deb
+    本地 # yum install xxx     #yum localinstall xxx.rpm
+  #下载到本地
+    yum (local)install xxx --downloadonly --downloaddir=/opt/test
+    apt-get install -d xxx
+  #升级
+  
+  # 更新源
+    附录1
+3.  生成rpm和srpm包
+  #生成srpm
+    #yum install –y rpm-build
+    #cd /root/rpmbuild && mkdir BUILD  BUILDROOT  RPMS  SOURCES  SPECS  SRPMS
+  #源文件放在SOURCES，spec文件放在SPECS  
+    # rpmbuild -bs SPECS/xxxx.spec
+  #编译srpm
+    #rpm -i xxxx.src.rpm
+    # rpmbuild -bb SPECS/xxxx.spec 提示包依赖
+    # yum install yum-utils 安装依赖
+    # yum-builddep  SPECS/xxxx.spec
+
+
+附录1  Apt更新官方源
+#vi /etc/apt/sources.list 添加下列行
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial main restricted
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial-updates main restricted
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial universe
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial-updates universe
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial multiverse
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial-updates multiverse
+deb http://cn.archive.ubuntu.com/ubuntu/ xenial-backports main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu xenial-security main restricted
+deb http://security.ubuntu.com/ubuntu xenial-security universe
+deb http://security.ubuntu.com/ubuntu xenial-security multiverse
+#apt-get update
+
+附录2  Yum更新官方源
+#yum clean all
+#vi /etc/yum.repos.d/CentOS-Base.repo
+[base]
+name=CentOS-$releasever - Base
+baseurl=https://mirrors.ustc.edu.cn/centos/$releasever/os/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+[updates]
+name=CentOS-$releasever - Updates
+baseurl=https://mirrors.ustc.edu.cn/centos/$releasever/updates/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+[extras]
+name=CentOS-$releasever - Extras
+baseurl=https://mirrors.ustc.edu.cn/centos/$releasever/extras/$basearch/
+gpgcheck=1
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+[centosplus]
+name=CentOS-$releasever - Plus
+baseurl=https://mirrors.ustc.edu.cn/centos/$releasever/centosplus/$basearch/
+gpgcheck=1
+enabled=0
+gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-CentOS-7
+
+#yum makecache
