@@ -185,3 +185,9 @@ dpkg -i *.deb
              For example: https://docs.microsoft.com/en-us/windows-hardware/drivers/ifs/using-an-inf-file-to-install-a-file-system-filter-driver
              If you right-click on the .inf file you should see a menu item to install the driver.
              Clicking that menu item probably does the same setupapi.dll InstallHinfSection thing that is mentioned in the article I linked.
+7. 安装centos 7提示: dracut-initqueue : Warning: dracut-initqueue timeout - starting timeout scripts
+   解决: 
+       dracut#ls /dev/sd*  -->找到U盘分区，一般是sd4
+       dracut#reboot
+       按e，编辑grub::   inst.stage2=hd:LABEL=CentOS\x207\x20x86_64.check改为inst.stage2=hd:/dev/sdb4
+       按ctrl+x开始引导

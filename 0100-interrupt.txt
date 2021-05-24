@@ -240,3 +240,8 @@ QEMU中可以使用的APCI设备有几个实现：
 1. kvm-apic(KVM实现)
 2. apic(qemu模拟实现)
 3. xen-apic(XEN实现)
+
+八、PCI设备中断
+PCI设备中断方案有两种:INT-X(A|B|C|D, pcie没有这四个pin)和MSI
+INT-X: 一种共享的中断方案，各pci设备把中断信号在一条中短线上相与，再上报给cpu,cpu进而去查询时哪个设备
+MSI: 往配置的CPU中断寄存器里进行memory写操作(写的地址和内容有配置空间提供)，来产生中断。

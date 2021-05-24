@@ -1,0 +1,237 @@
+术语：
+UIO: the userspace I/O system, 一个最通用的用户态设备驱动框架（不依赖VT-d等硬件）
+VFIO(Virtual Function I/O)：现代系统(VT-d|AMD-Vi)提供DMA和中断重映射功能，VFIO是
+                            该功能的驱动程序，允许用户空间程序直接驱动设备。
+
+一、PCI
+演进过程: PCI ==> PCI-X ==> PCI-Express(1.0 -> 2.0 -> 3.0)
+  1.配置空间(256字节,64字节标准化+192字节由vendor定义,PCIe引入扩展配置空间最大到4096字节,此为每个功能一个最大256B*8*32*256=16M,pcie为256M)
+       +---------------------+ VendorID: 控制器厂商向PCI组织申请
+    #0 | DeviceID | VendorID | DeviceID: 控制器厂商生产的不同设备分配不同ID
+       +---------------------+ Status: 设备向驱动报告特性或错误,bitmask
+    #1 | Status   | Command  | Command: 驱动告诉设备激活哪些特性,bitmask:
+       +---------------------+
+                        #define  PCI_COMMAND_IO		0x1	/* 外部通过I/O端口访问设备时是否回应 */
+                        #define  PCI_COMMAND_MEMORY	0x2	/* 外部通过MMIO访问设备时是否回应 */
+                        #define  PCI_COMMAND_MASTER	0x4	/* master/slave架构，设备是否可能主动发起 */
+                        #define  PCI_COMMAND_SPECIAL	0x8	/* Enable response to special cycles */
+                        #define  PCI_COMMAND_INVALIDATE	0x10	/* Use memory write and invalidate */
+                        #define  PCI_COMMAND_VGA_PALETTE 0x20	/* Enable palette snooping */
+                        #define  PCI_COMMAND_PARITY	0x40	/* Enable parity checking */
+                        #define  PCI_COMMAND_WAIT	0x80	/* Enable address/data stepping */
+                        #define  PCI_COMMAND_SERR	0x100	/* Enable SERR */
+                        #define  PCI_COMMAND_FAST_BACK	0x200	/* Enable back-to-back writes */
+                        #define  PCI_COMMAND_INTX_DISABLE 0x400 /* INTx Emulation Disable */
+       
+       +------------------------------------------+  BIST:各位分别表示设备自检特性、使能和应答
+       | BIST | Header Type |  Latency  |  Cache  |  Header Type: 决定了如何解释接下来的192字节
+       +------------------------------------------+  Latency: 总线上设备独占总线的最大时间(pcie为0)
+       |                                          |  Cache:指示CPU预读prefetch-BAR的单位(pcie为0)
+       |              BAR#0 ~ BAR#5               |
+       |                                          |
+       +------------------------------------------+  Class code|Subclass|Prog 
+    #2 |Class code| Subclass| Prog IF   |  RevID  |  RevID: 产品修订版本好,包括固件版本
+       +------------------------------------------+  IF(r):标识设备的类型、功能和寄存器级编程接口 
+       |   reserved                | cap. pointer |  cap. pointer: Capabilities链头，指向下一个Capability
+       +------------------------------------------+  Subsystem Vendor ID: 设备厂商ID, 区别于VendorID
+       |    Subsystem ID    | Subsystem Vendor ID |  Subsystem ID==DeviceID
+       +------------------------------------------+
+       |                    | INT-Pin  | INT-Line |  INT-Pin: PCI总线提供4个管脚用于触发中断INT-A、INT-B、INT-C和INT-D，此值表示此设备使用哪个管脚值为0~3
+       +------------------------------------------+  INT-Line: 提供一个存储空间，BIOS/OS往里存储IRQ-line(中断向量号)
+
+    注：- DID+VendorID+RevID+SSID+SVID 唯一确定一款硬件产品
+        - 查看pcie slot的版本和接口类型可通过#dmidecode -t 9
+        - #lspci -nnvvs 01:00.0和#lspci -tv是常用的命令
+        - 通过IO端口（data-port:CFCh~CFFh, addr-port:CF8h~CFBh）访问16M的配置空间
+  2.PCI设备枚举
+
+
+二、UIO、
+用户空间接口：用户空间通过如下两个文件访问一个UIO设备。
+    1. 设备文件(/dev/uioN)
+        地址空间：通过mmap设备文件描述符访问设备地址空间（register or ram）
+        中断：通过read或select读取设备总中断次数，返回整形数字
+              通过write,写入0或者1来关闭或者激活中断。用于某些有多个中断源的设备
+                        同时，禁用中断后，你必须提供内核模块，用于处理中断。
+    2. 几个sysfs文件（/sys/class/uio/uioX目录）
+           name：设备名称
+           version：驱动程序版本
+           event：累计处理中断总数
+           maps/mapN/：某些工业I/O卡需要访问驱动程序中的多个PCI内存区域。
+                name：字符串标识此内存区域，允许为空
+                addr：起始地址
+                size: 大小，单位字节
+                offset：mmap()返回的地址始终是页面对齐的，需要便宜offset字节
+           portio/portX/
+                name：字符串标识
+                start：起始端口
+                size：端口数量
+                porttype：字符串，描述端口类型
+     3. 库函数libpci，是上面两个接口的封装。
+内核驱动实现（"uio_pci_generic"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于PCI
+    总线上的设备（遵循PCI 2.3或者PCIE规范）。
+   #modprobe uio_pci_generic
+   #驱动程序(uio_pci_generic)声明支持驱动设备(8086 10f5)
+   #echo "8086 10f5" > /sys/bus/pci/drivers/uio_pci_generic/new_id
+   #设备可能被其他驱动绑定，需要将其解绑到uio_pci_generic驱动
+   #echo -n 0000:00:19.0 > /sys/bus/pci/drivers/e1000e/unbind
+   #echo -n 0000:00:19.0 > /sys/bus/pci/drivers/uio_pci_generic/bind
+   #lspci -vv #查看设备被哪个驱动程序绑定
+内核驱动实现（"uio_hv_generic"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于
+    Hyper-V VMBus上的设备。
+    
+用户空间驱动：通过通用内核驱动可以获取到设备内存和中断等信息
+    #mmap设备内存到用户空间。通过访问数组一样的方式去初始化设备，设备开始工作。
+    #等待中断。中断发生后int32_t lastcount = read(/dev/uioX)返回，中断可能丢失。
+    
+内核驱动实现（"igb_uio"）：DPDK提供，For some devices which lack support for 
+    legacy interrupts, e.g. virtual function (VF) devices, the igb_uio module
+    may be needed in place of uio_pci_generic.
+    
+约束与限制：
+      1. UIO无法在UEFI安全引导的硬件上工作，应使用vfio-pci。
+      2. 确保IOMMU关闭，或者工作模式为passthrough
+        x86_64: "intel_iommu=off" 或者 "intel_iommu=on iommu=pt"
+        arm64:  "amd_iommu=off" 或者 "iommu.passthrough=1"
+      3. 无法使用VT-d的I/O硬件虚拟化技术，可能存储安全问题
+      4. 仅支持Legacy中断（对比MSI/MSI-X），"UIO不支持DMA设备？？？"
+参考：
+1. lsuio可查看UIO设备所有属性(http://www.osadl.org/projects/downloads/UIO/user/)
+2. UIO帮助文档，https://www.kernel.org/doc/html/latest/driver-api/uio-howto.html
+
+三、VFIO
+    VFIO是一套用户态驱动框架，在虚拟化中被用于实现设备的透传。现代系统都提供了
+    DMA和中断重映射功能（AMD-Vi和Intel VT-d）以隔离I/O设备。VFIO支持使用此特性。
+    1.确保BIOS激活IOMMU功能，IOMMU属于VT-D的一个部分。
+    2.确保内核编译时CONFIG_INTEL_IOMMU有被选中
+    3.配置内核参数intel_iommu=on、vfio_iommu_type1.allow_unsafe_interrupts=1
+    4. 检查系统支持DMAR，#dmesg | grep –e DMAR –e IOMMU(找到DMAR: IOMMU enabled)
+
+    
+    三个概念：
+    A. Groups: Devices的集合（没有IOMMU前设备可以访问整个地址空间）,启用IOMMU后，
+       物理设备属于IOMMU一个group,VFIO以Group为最小单位进行设备分配。分配前确保
+       将组内所有设备从宿主机驱动剥离开，可以不关联VFIO驱动，剥离后组就绪.
+    B. Devices: 
+    C. Containers: Groups的集合（不同Containers内的Groups可能有相同的Groups编号）
+用户空间接口：用户空间通过如下两个文件访问一个VFIO设备。
+    1. 创建一个新的container
+        container = open("/dev/vfio/vfio", O_RDWR);
+    2. group = open(/dev/vfio/$GROUP)
+    3. ioctl(group, VFIO_GROUP_SET_CONTAINER, &container) 加1或多个组到容器
+    3. 获取设备，设备不暴露给用户空间/* Get a file descriptor for the device */
+        device = ioctl(group, VFIO_GROUP_GET_DEVICE_FD, "0000:06:0d.0");
+    3. ioctl(其他方法) 加入容器后才能用其他方法
+    
+内核驱动实现（"vfio-pci"）：
+    使用此驱动后只要专注用户空间驱动开发而不用关心特定硬件的内核模块。适用于PCI
+    总线上的设备（遵循PCI 2.3或者PCIE规范）。
+    #modprobe vfio-pci
+    #驱动程序(vfio-pci)声明支持驱动设备(lspci -nvv ==> 8086 3e90)
+    #echo 0000:00:02.0 > /sys/bus/pci/devices/0000:00:02.0/driver/unbind
+    #echo 8086 3e90 > /sys/bus/pci/drivers/vfio-pci/new_id
+     （echo 8086 9d70 > /sys/bus/pci/drivers/vfio-pci/new_id 声卡）
+     （echo 8086 a2af > /sys/bus/pci/drivers/vfio-pci/new_id XHCI）
+    #设备可能被其他驱动绑定，需要将其解绑到vfio-pci驱动
+约束与限制：
+      1. 支持在没有IOMMU硬件平台上工作，需要显式打开：
+         #echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
+      2. 仅支持non-bridge PCI设备
+虚拟化：
+qemu使用vfio设备，-device vfio-pci,host=0000:00:01.0
+
+四、Option ROM
+    # cd /sys/bus/pci/devices/0000:00:02.0/
+    # echo 1 > rom
+    # cat rom > /tmp/8086_3e90.rom
+    # echo 0 > rom
+    # 如果要修改PCI ID，需要用rom-parser修改并更新校验码
+    # git clone https://github.com/awilliam/rom-parser
+    # cd rom-parser && make 生成rom-parser程序
+    # usage: rom-fixer [ROM file]
+    
+    
+诊断VFIO范例：
+#modprobe vfio-pci
+#echo 0000:00:02.0 > /sys/bus/pci/devices/0000:00:02.0/driver/unbind
+#echo 8086 3e90 > /sys/bus/pci/drivers/vfio-pci/new_id
+
+#echo 0000:00:14.0 > /sys/bus/pci/devices/0000:00:14.0/driver/unbind
+#echo 8086 a2af > /sys/bus/pci/drivers/vfio-pci/new_id
+
+LC_ALL=C \
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+HOME=/var/lib/libvirt/qemu/domain-2-vm \
+XDG_DATA_HOME=/var/lib/libvirt/qemu/domain-2-vm/.local/share \
+XDG_CACHE_HOME=/var/lib/libvirt/qemu/domain-2-vm/.cache \
+XDG_CONFIG_HOME=/var/lib/libvirt/qemu/domain-2-vm/.config \
+QEMU_AUDIO_DRV=spice \
+QEMU_AUDIO_TIMER_PERIOD=125 \
+/usr/bin/qemu-system-x86_64 \
+-name guest=vm,debug-threads=on \
+-machine pc-i440fx-2.11,accel=kvm,usb=off,dump-guest-core=off,mem-merge=off \
+-cpu host,kvm=off \
+-m size=3061760k,slots=8,maxmem=268435456k \
+-realtime mlock=off \
+-smp 4,sockets=1,cores=4,threads=1 \
+-object iothread,id=iothread1 \
+-object iothread,id=iothread2 \
+-numa node,nodeid=0,cpus=0-3,mem=2990 \
+-uuid 00000000-0000-0000-0000-000000000000 \
+-no-user-config \
+-nodefaults \
+-rtc base=localtime,clock=vm,driftfix=slew \
+-global kvm-pit.lost_tick_policy=delay \
+-no-hpet \
+-no-shutdown \
+-boot menu=off,strict=on \
+-device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
+-device virtio-scsi-pci,id=scsi0,bus=pci.0,addr=0x5 \
+-device virtio-serial-pci,id=virtio-serial0,bus=pci.0,addr=0x4 \
+-device usb-tablet,id=input0,bus=usb.0,port=1 \
+-vnc 0.0.0.0:29100,password \
+-spice port=5900,addr=0.0.0.0,seamless-migration=on \
+-device vfio-pci,host=0000:00:02.0,id=ua-hostigd,bus=pci.0,addr=0x2 \
+-bios /usr/share/qemu-kvm/seabios.bin \
+-smbios 'type=1,manufacturer=Ruijie Inc.,product=RCOS' \
+-smbios 'type=2,manufacturer=Ruijie Inc.,product=RCOS' \
+-smbios 'type=3,manufacturer=Ruijie Inc.' \
+-smbios 'type=17,manufacturer=Ruijie Inc.' \
+-machine igd-dsm-fhost=on \
+-global PIIX4_PM.disable_s3=1 \
+-global PIIX4_PM.disable_s4=1 \
+-chardev stdio,id=seabios \
+-device isa-debugcon,iobase=0x402,chardev=seabios \
+-machine pci_update_vga=false \
+-nographic \
+-vga none \
+-cpu host,kvm=off \
+-machine fake_mem_size=4G \
+-sandbox off \
+-msg timestamp=on \
+-device vfio-pci,host=0000:00:14.0 \
+win7_64_legacy.img
+
+
+-drive file=/opt/lessons/images/diff_1baea260d-7293-4f73-a22a-6e5e71f94d67.qcow2,format=qcow2,if=none,id=drive-scsi0-0-0-0,cache=writeback,copy-on-read=off,discard=unmap \
+-device scsi-hd,bus=scsi0.0,channel=0,scsi-id=0,lun=0,drive=drive-scsi0-0-0-0,id=scsi0-0-0-0,bootindex=1,write-cache=on,serial=QM001 \
+
+
+
+
+
+附A: PCIE总线速率表
+Generation	Year 	Data Transfer Rate	Bandwidth x1	Bandwidth x16
+PCIe 1.0	2003	2.5 GT/s		250 MB/s	4.0 GB/s
+PCIe 2.0	2007	5.0 GT/s		500 MB/s	8.0 GB/s
+PCIe 3.0	2010	8.0 GT/s		1 GB/s		16 GB/s
+PCIe 4.0	2017	16 GT/s			2 GB/s		32 GB/s
+PCIe 5.0	2019	32 GT/s			4 GB/s		64 GB/s
+PCIe 6.0	2021	64 GT/s			8 GB/s		128 GB/s
+
+附B: PCI Capabilities
+1. MSI
+表示设备支持使用MSI中断，详细参考0100-interrupt.txt#MSI
+2. Advanced Error Reporting(高级错误报告，简称AER)

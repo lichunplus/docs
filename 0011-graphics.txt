@@ -4,8 +4,225 @@ SDL: Simple DirectMedia Layer, 开源|跨平台(封装windows的DirectX、封装
 GTK: GIMP Toolkit,同样也支持windows和mac,使用不广, 它是Linux应用程序的主流图形库
 DirectX: 是由微软公司创建的多媒体编程接口，是一种应用程序接口（API）
 
-一、架构模型
+一、显卡工作原理
+BIOS Video Support Service(int 10h服务, 参数AH寄存器):
+  - AH=00h(显示模式配置), AL=0|1|2|3|4|5|6不同模式分辨率颜色数量不同，有的是字符模式有的是图形模式
+  - AH=01h|02h|03h(光标配置)
+  - AH=08|09|0A|0Eh(显示一个字符)
+  - AH=13h(显示字符串)
+  - AH=4Fh(标准化的VBE接口, 参数AL寄存器)
+    - AL=00h(GET SuperVGA INFORMATION)
+    - AL=01h(GET SuperVGA MODE INFORMATION)
+    - AL=02h(SET SuperVGA VIDEO MODE)
+    - AL=10h(v1.1+ - GET/SET LOGICAL SCAN LINE LENGTH (PIXELS))
+    ...
+  ...
+VGA(-device VGA带有VBE扩展,一下参数只是基础VGA):
+  VGA设备(注：以上VGA设备略有差异，可多次编译SeaVGABIOS生成需要的VGAROM（见make menuconfig -C seabios/）):
+    -device VGA(IBM 1987 + VBE)  对应SeaVGABIOS-VGAROM: "QEMU/Bochs VBE SVGA" 参考docs/specs/standard-vga.txt
+    -device qxl-vga              对应SeaVGABIOS-VGAROM: "QEMU/Bochs VBE SVGA"+CONFIG_OVERRIDE_PCI_ID
+    -device vmware-svga          对应SeaVGABIOS-VGAROM: "QEMU/Bochs VBE SVGA"+CONFIG_OVERRIDE_PCI_ID
+    -device virtio-vga           对应SeaVGABIOS-VGAROM: "QEMU/Bochs VBE SVGA"+CONFIG_OVERRIDE_PCI_ID
+    -device bochs-display(dispi) 对应SeaVGABIOS-VGAROM: "qemu bochs-display support"(基于VGA但不兼容VGA)
+    -device ramfb                对应SeaVGABIOS-VGAROM: "qemu ramfb"
+    -device cirrus-vga           对应SeaVGABIOS-VGAROM: "QEMU/Bochs Cirrus SVGA"
+    注意：QEMU中似乎没有VGA设备可以与SeaVGABIOS-VGAROM: "QEMU/Bochs Original IBM 256K VGA"对应
+  显存容量: 64K~256K("Extended Memory"==1,需要通过写入内容再读取内容的方式探测实际大小,内部分成4*64K的planes)
+            CPU通过high-memory中的128K地址空间访问显存空间
+            "RAM Enable" == 1 && "Memory Map Select" == ::
+            00 -- A0000h-BFFFFh -- 128K
+            01 -- A0000h-AFFFFh -- 64K
+            10 -- B0000h-B7FFFh -- 32K
+            11 -- B8000h-BFFFFh -- 32K
+  寻址模式: 物理地址到显存地址的转换
+    - Chain 4 mode: 
+    - Odd/Even mode:
+    - normal mode:
 
+  显存模型:
+    - monochrome(单色)
+    - 4-color(兼容CGA): 每个像素点由2bit表示, 这2bit均匀分布在plane0和1上，plane2和3未使用
+    - 16-color(兼容EGA): 每个像素点由4bit表示，这4bit均匀分布在4个plane上
+    - 256-color(兼容MCGA): 每个像素点由1Byte表示, 各像素点均匀的分布在4个plane上
+    - text mode: 字符模式，屏幕并非以像素点为单位，而是以字符为单位.
+       plane0: 存放各字符单元的字符编码
+       plane1: 存放各字符单元的属性的位字段（例如颜色，闪烁，字符集等）
+       plane2: 存放字体数据
+       plane3: 未使用
+
+  读显存: Read Mode == ::
+    - 0 -- Read Mode 0: 返回显存内容
+    - 1 -- Read Mode 1: 返回颜色比较结果("Color Don't Care"字段参与控制)
+  写显存: Write Mode == ::
+    - 0 -- Write Mode 0: 
+    - 1 -- Write Mode 1: 执行特定任务
+    - 2 -- Write Mode 2: 执行特定任务
+    - 3 -- Write Mode 3: 执行特定任务
+  寄存器(注：pci配置空间不会声明以下VGA使用的端口,因此一个系统只能使用一个VGA设备):
+    MSR#Miscellaneous Output Register
+        - IOPort访问: DataWrite: 3C2h, DataRead: 3CCh
+    GR#Graphics Controller Registers
+        - IOPort访问: IndexWrite: 3CEh, DataRead/Write: 3CFh
+        - 寄存器列表：
+            GR00 - Set/Reset Register
+            GR01 - Enable Set/Reset Register
+            GR02 - Color Compare Register
+            GR03 - Data Rotate Register
+            GR04 - Read Plane Select Register
+            GR05 - Graphics Mode Register
+            GR06 - Miscellaneous Register
+            GR07 - Color Don't Care Register
+            GR08 - Bit Mask Register
+            GR10 - Address Mapping
+            GR11 - Page Selector
+            GR18 - Software Flags
+    SR#Sequencer Registers
+        - IOPort访问: IndexWrite: 3C4h, DataRead/Write: 3C5h
+        - 寄存器列表：
+            SR00 - Sequencer Reset
+            SR01 - Clocking Mode
+            SR02 - Plane/Map Mask
+            SR03 - Character Font
+            SR04 - Memory Mode Register
+            SR07 - Horizontal Character Counter Reset
+    AR#Attribute Controller Registers
+        - IOPort访问: IndexWrite: 3C0h, DataRead/Write: 3C1h
+        - 寄存器列表：
+            AR[00:0F] - Palette Registers [0:F]
+            AR10 - Mode Control Register
+            AR11 - Overscan Color Register
+            AR12 - Memory Plane Enable Register
+            AR13 - Horizontal Pixel Panning Register
+            AR14 - Color Select Register
+    CR#CRT Controller Registers
+        - IOPort访问: IndexWrite: 3B4h(mano)|3D4h(color), DataRead/Write: 3B5h(mano)|3D5h(color)
+        - 例，读取index==1的CR寄存器值:
+            (qemu)o /xb 0x3d4 0x1
+            (qemu)i /xb 0x3d5
+        - 寄存器列表：
+            CR00 - Horizontal Total Register
+            CR01 - Horizontal Display Enable End Register
+            CR02 - Horizontal Blanking Start Register
+            CR03 - Horizontal Blanking End Register
+            CR04 - Horizontal Sync Start Register
+            CR05 - Horizontal Sync End Register
+            CR06 - Vertical Total Register
+            CR07 - Overflow Register (Vertical)
+            CR08 - Preset Row Scan Register
+            CR09 - Maximum Scan Line Register
+            CR0A - Text Cursor Start Register
+            CR0B - Text Cursor End Register
+            CR0C - Start Address High Register
+            CR0D - Start Address Low Register
+            CR0E - Text Cursor Location High Register
+            CR0F - Text Cursor Location Low Register
+            CR10 - Vertical Sync Start Register
+            CR11 - Vertical Sync End Register
+            CR12 - Vertical Display Enable End Register
+            CR13 - Offset Register
+            CR14 - Underline Location Register
+            CR15 - Vertical Blanking Start Register
+            CR16 - Vertical Blanking End Register
+            CR17 - CRT Mode Control
+            CR18 - Line Compare Register
+            CR22 - Memory Read Latch Data Register
+            CR24 - Toggle State of Attribute Controller Register
+    Color Registers(通过IOPort: 3c8h|3c7h|3c9h|3c7h访问)
+    External Registers(过IOPort: 3cch/3c2h|3cah/3xah|3c2h|3xah)
+
+
+DisplayID vs EDID(Extended Display Identification Data)
+ VESA规定了显示器设备向外暴露特性的元数据结构(固定为128Bytes的EEPROM)
+  - manufacturer name
+  - serial number
+  - product type
+  - phosphor or filter type (as chromaticity data)
+  - timings supported by the display
+  - display size
+  - luminance data and (for digital displays only) pixel mapping data.
+ 历史：
+  - 1994 EDID v1.0
+  - 1996 EDID v1.1
+  - 1997 EDID v1.2 and v2.0(作废)
+  - 2000 E-EDID v1.0 and EDID v1.3 开始支持HDMI
+  - 2006 E-EDID v2.0 and EDID v1.4
+  - 2008 DisplayID v1.0            开始支持DP
+ EDID|E-EDID|DisplayID 均为VESA组织发布
+ #edid-decode /sys/class/drm/*/edid，通过i2c总线读取
+
+DPM vs DPMS(VESA Display Power Management Signaling)
+ VESA规定显示器电源状态, 通过EDID暴露此特性
+ 请使用DPM,DPMS已经废弃
+ DPMS状态        DPM状态  行业描述
+ ---------------------------------
+ on              on       ON
+ standby         off      SLEEP
+ suspend         off      SLEEP
+ off             off      OFF
+
+各个设备的寄存器可能映射在：
+    PCI空间     --    通过PCI桥的addr-0xCF8和Data-0xCFC访问
+    MMIO空间    --    像访问内存一样访问寄存器(实模式通过A:B段, 保护模式直接访问)
+                      设备可能将MMIO空间再映射到IOBAR上暴露MMIO_INDEX+MMIO_DATA寄存器间接访问MMIO映射的寄存器
+    I/O空间(早期VGA等设备，可直接通过IO端口访问设备寄存器)
+
+IGD:
+Rocket Lake           Gen12
+IceLake (ICL-LP)      Gen11LP       Client successor to CannonLake.
+Kaby Lake             Gen9p5(14nm)  An update to the Skylake microarchitecture.
+Apollo Lake (Broxton) Gen9LP(14nm)  A low-power variation of Skylake
+Skylake               Gen9(14nm)    Successor to the HSW/BDW microarchitecture.
+CherryView (Braswell) Gen8LP(14nm)  Low-power variation of Broadwell.
+Broadwell (BDW)       Gen8
+SandyBridge           Gen6
+IvyBridge             Gen6
+ValleyView            Gen6
+Haswell               Gen6
+
+ - OpRegion 设备提供一个8KB的存储空间, 用于替代传统的INT 10(OS <-> BIOS)请求.
+            guest-BIOS负责创建OpRegion, 初始内容由VFIO->QEMU->seabios，并将新的
+            基地址存放在ASLS寄存器暴露给OS驱动修改OpRegion后通过中断通告，
+            因此OS和BIOS交互接口有:
+            - int 10h, 
+            - SMI(ACPI定义的中断), 
+            - SCI(用于OpRegion修改后通告)
+            结构如下：
+            0x0000-0x0099 OpRegion Header------------------------暴露特性信息等
+            0x0100-0x0199 Mailbox #1 Public ACPI Methods
+            0x0200-0x0299 Mailbox #2 SWSCI
+            0x0300-0x0499 Mailbox #3 BIOS/Driver Communication
+            0x0500-0x1c99 Video BIOS Table (VBT)
+            0x1d00-0x2000 Reserved
+ - Graphics Stolen Memory, 划分一段连续物理内存给IGD用(不是给CPU),内存分两部分:
+    - GSM(GTT Stolen Memory):
+           1. 配置GMCH.GGMS(GMCH同GGC)寄存器指定大小0/1/2MB(Gen8开始支持8MB)
+           2. 首地址也就是Graphics Stolen Memory的首地址存放在BGMS寄存器(pci-addr-70-73h)
+           3. 北桥上IMR寄存器, 存放了GSM的首地址用于屏蔽直接对GSM内存片段访问(需通过GTTMMADR).
+           4. 通过mmio访问iobar范围来读写GTT(Direct accesses to GSM are not allowed.)
+                - 32bit的IOPort访问一个GTT的页(Gen8前), 这32bit称为PTE.
+                - 64bit的IOPort访问一个GTT的页(Gen8及之后), 这64bit称为PTE.
+                - 综上iobar空间为2K或16K.(GTT空间似乎只有通过IOBAR访问)
+    - DSM(可视为显存, Data stolen memory):
+        1. 配置GMCH.GMS(GMCH同GGC, 图形模式选择)寄存器指定大小0~512MB
+        2. 由三部分组成 VGA-FB-8MB + GFX-DATA + WOPCM-1MB
+        3. 首地址存放在BDSM寄存器(pci-addr-5C-5Fh, DSM和GTT物理内存可以不相邻)
+
+  - 内存映射  固定映射A0000h~BFFFFh(通过128KB孔访问8MB) <--> DSM.VGA-FB-8MB
+              BAR1(GTTMMADR, GTT and Regs) <--> 请求分配内存空间，用于映射GTT-DRAM和MMIO寄存器
+                  - 旧IGD 4MB(2MB MMIO + 2MB GTT)  此寄存器不等于BDSM寄存器(BIOS枚举时申请Stolen-Mem首地址)
+                  - 新IGD 16MB(2MB MMIO + 6MB预留 + 8MB GTT)
+                  注: Global-GTT(DRAM)存放的PTEs只能通过GTTMMADR指示的内存空间写入, 但可以从Global-GTT(DRAM)直接读取
+              BAR2(GMADR, Gfx Aperture Memory), 256MB) <--> DSM(通过GTT映射后的显存)
+                  线性映射
+                  IOSF(Intel On-chip system faric)访问BAR2后GTT表映射目的地址自动转发给内存控制器
+              IOBAR, 请求分配IOPORT资源，用于映射设备的MMIO控制寄存器: MMIO_INDEX(32bit) + MMIO_DATA(32bit)
+                  (qemu)o /xw 0xc000 0x70188
+                  (qemu)i /xw 0xc004
+                  可通过IOBAR访问IGD内部MMIO寄存器和GTT空间(DRAM), 也就是GTTMMADR映射部分.
+                  (VGA寄存器必须通过VGA专用端口访问, PCI寄存器也需要通过PCI空间访问)
+        Region 0: Memory at f5000000 (64-bit, non-prefetchable) [size=16M]
+        Region 2: Memory at c0000000 (64-bit, prefetchable) [size=256M]
+        Region 4: I/O ports at f000 [size=64]
 
 二、X Windows System(X11, or simply X)
     +-------+ +------+
@@ -34,9 +251,6 @@ DisplayServer:
 
 
 三、图形库（GTK|SDL|DirectX）
-
-
-
 附件A： 问题记录
 0. 执行startx, 没有任何错误提示
    解决: 在本地系统上运行“ startx”，则图形系统或Windows Manager可能会掩盖错误消息。需要远程SSH执行

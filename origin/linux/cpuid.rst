@@ -12,7 +12,7 @@ KVM CPUID bits
 
 4. guest执行 #cpuid 0x40000001, 返回EAX和EDX,各个位解释如下：
 EAX-bit-00: KVM_FEATURE_CLOCKSOURCE,可使用通过两个MSRs(0x11和0x12)提供的时钟信息（启动时间和运行时间）
-EAX-bit-01: KVM_FEATURE_NOP_IO_DELAY,告诉Guest不需要执行IO Delay动作
+EAX-bit-01: KVM_FEATURE_NOP_IO_DELAY,告诉Guest不需要执行IO Delay动作(通常，硬件设备无法像处理器发出I / O访问一样快地处理它们)
                                      IO Delay概念: IBM-PC连续执行两个i/o(in/out)指令第二条会报错，依赖适当的延时
                                      linux提供了4个解决方法(make menuconfig Kernel hacking->IO delay type):
                                        -0x80端口(推荐，使用15年后在HP-dv9000z-laptop,AMD64运行奔溃)

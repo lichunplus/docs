@@ -1,10 +1,67 @@
 编译：
-#cd build/ && ../configure --target-list=x86_64-softmmu --disable-slirp --disable-glusterfs --disable-smartcard
-#make -j4
+#cd build/ && 
+../configure --target-list=x86_64-softmmu \
+--disable-slirp \
+--disable-glusterfs \
+--disable-smartcard \
+--disable-nettle \
+--disable-libiscsi \
+--disable-vnc-sasl \
+--disable-vnc-png \
+--disable-gnutls \
+--disable-gtk \
+--disable-spice \
+--disable-seccomp \
+--disable-rbd \
+--disable-rdma \
+--disable-usb-redir \
+--disable-opengl \
+--audio-drv-list="" \
+--block-drv-whitelist=qcow2,raw,file,host_device \
+--disable-guest-agent \
+--disable-fdt \
+--disable-gcrypt \
+--disable-xfsctl \
+--disable-xen \
+--disable-vte \
+--disable-vnc-jpeg \
+--disable-virtfs \
+--disable-libnfs \
+--disable-live-block-migration \
+--disable-bzip2 \
+--disable-brlapi \
+--disable-libusb \
+--disable-cap-ng  \
+--enable-trace-backends=ftrace
+
+参数说明：
+--enable-slirp: 激活后可以使用“-netdev user”
+
+
+#make -j$(nproc) -C /opt/qemu/build
+
+#/mnt/qemu/build/qemu-system-x86_64 -enable-kvm -nodefaults -m 4g -smp 4 /opt/w7_sp1_x64.img -device vfio-pci-nohotplug,host=0000:00:02.0,addr=2 -vnc 0.0.0.0:0 -L /mnt/qemu/pc-bios/
+
 #scp -r pc-bios/ qemu-system-x86_64 172.20.101.65:/opt
 # novnc_server | ./qemu-system-x86_64
 #WEB访问ip:6080
 
+常用命令：
+###鼠标自动对齐
+-device piix3-usb-uhci -device usb-tablet
+###访问因特网
+-netdev user,id=net0 -device e1000,netdev=net0(依赖--enable-slirp)
+###seabios日志
+-device isa-debugcon,iobase=0x402,chardev=seabios -chardev stdio,id=seabios
+
+1. 运行cirros-img系统，获取root权限（#sudo su -）：
+#echo allow br-int > /etc/qemu-kvm/bridge.conf
+#qemu-system-x86_64 -smp 2 -m 1g --enable-kvm \
+    -nographic -device VGA \
+    -device virtio-net-pci,netdev=net0,id=net0 \
+    -netdev bridge,id=net0,br=br-int \
+    -netdev user,id=net0 -device e1000,netdev=net0
+    cirros.img
 
 OPTIONS
 -name
@@ -103,13 +160,21 @@ OPTIONS
 -nographic
     禁用显卡同时重定向仿真的虚拟串口设备到宿主console
     
--vga type
+-vga type(已经被-device替代)
     选择一个模拟的VGA卡，qemu只能配置一个设备，支持的类型有：
     cirrus： Cirrus Logic GD5446视频卡，windows全系支持，guest中应使用16位颜色深度
              最大分辨率为1024x768像素
     vmware：适用于vmware虚拟化平台时
     std：带有Bochs VBE扩展功能的标准VGA卡，VBE支持适用于高分辨率（windows支持）
          最高可测试2560x1600像素,后端可以使用spice
+    -device VGA
+      edid=on(edid是显示器的属性数据块128Bytes(#edid-decode /sys/class/drm/*/edid)，通过i2c总线读取)
+      xmax=1440,ymax=900(edid内容，配置最大支持的分辨率)
+      xres=1440,yres=900(edid内容，配置显示器推荐的分辨率，windows10似乎只会推荐10)
+      vram_size_mb=1~512(2的幂次方, 属于设备自带的ram存储空间)
+      qemu-extended-regs=on(VGA向guest暴露qext寄存器,用于配置framebuffer字节序,同时提供big-endian-framebuffer)
+      big-endian-framebuffer=on(设置默认的framebuffer字节序,可能被guest修改)
+
     qxl：半虚拟化图像卡，兼容VGA，Guest中安装qxl驱动后性能最佳
     none：Disable VGA card.
 
@@ -314,82 +379,16 @@ Debug/Expert options:
 -s：shorthand for -gdb tcp::1234
 -gdb dev，等待gdb连接，#(gdb) target remote localhost:1234可以debug guest代码
           调试符号可以由gdb客户端添加。
+-trace *igd*
+    默认Trace Backend由config时指定Available backends: dtrace ftrace log simple syslog ust
+    ftrace基本用法：
+    1.在QEMU Monitor中，使用trace-event 'events' on激活QEMU的trace输出
+      文件/usr/share/qemu-kvm/trace-events-all记录了QEMU支持的所有events名称
+    2.使用#echo 1 > /sys/kernel/debug/tracing/events/kvm/enable激活KVM的trace输出
+    3.使用#cat /sys/kernel/debug/tracing/trace_pipe实时查看调试信息
 
 其他：
 -enable-fips 安全相关的
-
-
-
-
-常用命令：
-1. 运行cirros-img系统，获取root权限（#sudo su -）：
-#echo allow br-int > /etc/qemu-kvm/bridge.conf
-#qemu-system-x86_64 \
-    -nographic \
-    -device virtio-net-pci,netdev=net0,id=net0 \
-    -netdev bridge,id=net0,br=br-int \
-    -netdev type=tap,id=net0,ifname=801012169218000,script=/sf/etc/kvm/ovs-ifup,downscript=/etc/ovs-ifdown,vhost=on,vhostforce=on
-    cirros.img
-
-
-
-
-LC_ALL=C \
-PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-HOME=/var/lib/libvirt/qemu/domain-7-vm \
-XDG_DATA_HOME=/var/lib/libvirt/qemu/domain-7-vm/.local/share \
-XDG_CACHE_HOME=/var/lib/libvirt/qemu/domain-7-vm/.cache \
-XDG_CONFIG_HOME=/var/lib/libvirt/qemu/domain-7-vm/.config \
-QEMU_AUDIO_DRV=none \
-QEMU_AUDIO_TIMER_PERIOD=125 \
-/opt/lessons/qemu-system-x86_64 \
--name guest=vm,debug-threads=on \
--machine pc-i440fx-2.11,accel=kvm,usb=off,dump-guest-core=off,mem-merge=off \
--cpu host,kvm=off \
--m size=3301376k,slots=8,maxmem=268435456k \
--realtime mlock=off \
--smp 4,sockets=1,cores=4,threads=1 \
--numa node,nodeid=0,cpus=0-3,mem=3224 \
--uuid 535b4f21-9ed0-42a2-be94-0ccac09ced76 \
--no-user-config \
--nodefaults \
--rtc base=localtime,clock=vm,driftfix=slew \
--global kvm-pit.lost_tick_policy=delay \
--no-hpet \
--global PIIX4_PM.disable_s3=1 \
--global PIIX4_PM.disable_s4=0 \
--boot menu=off,strict=on \
--device piix3-usb-uhci,id=usb,bus=pci.0,addr=0x1.0x2 \
--device virtio-serial-pci,id=virtio-serial0,bus=pci.0,addr=0x5 \
--cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,kvm=off,hv_vendor_id=ruijienet_vm \
--bios /usr/share/qemu-kvm/seabios.bin \
--smbios type=0,vendor=RuiJie,version=1 \
--smbios type=1,manufacturer=RuiJie,product=ruijie,version=1,serial=ruijie01,family=RG-RCD,uuid=00000000-0000-0000-0000-000000000000 \
--smbios type=2,manufacturer=RuiJie,product=ruijie,serial=ruijie01,version=1 \
--smbios type=3,manufacturer=RuiJie,serial=ruijie01,version=1 \
--smbios type=17,manufacturer=RuiJie \
--sandbox off \
--vga none \
--msg timestamp=on \
--device usb-tablet \
--netdev user,id=net1 \
--device e1000e,netdev=net1,bus=pci.0,addr=0x10 \
--global i440FX-pcihost.allow-hotplug=false \
--spice port=5901,addr=0.0.0.0,plaintext-channel=default,seamless-migration=on \
--vnc 0.0.0.0:0 \
--device vfio-pci,host=00:02.0,id=hostdev0,bus=pci.0,addr=0x2 \
-/opt/lessons/win10_clean.img
-
--device qxl-vga,id=video2,ram_size=134217728,vram_size=67108864,vram64_size_mb=0,max_outputs=1,addr=0x14,bus=pci.0,addr=0x2 \
-
--device qxl,id=video1,ram_size=134217728,vram_size=67108864,vram64_size_mb=0,max_outputs=1,addr=0x14,device-id=0x0100 \
--device qxl-vga,id=video0,ram_size=134217728,vram_size=67108864,vram64_size_mb=0,max_outputs=1,addr=0x2,device-id=0x0100 \
-
-<qemu:arg value='-device'/>
-<qemu:arg value='qxl,id=video1,ram_size=134217728,vram_size=67108864,vram64_size_mb=0,max_outputs=1,addr=0x14,device-id=0x0101'/>
-
-i440FX-pcihost: add 'allow-hotplug' property for configuring whether to expose the
-BSEL to the guest
 
 qemu-img
   amend   #qemu-img amend -o compat=1.1 /opt/test.qcow2,镜像属性信息修改.
@@ -443,3 +442,12 @@ refer: https://documentation.suse.com/sles/11-SP4/html/SLES-all/cha-qemu-cachemo
 1. 
 [20:07] <damo22> karrq: i use this:   -net user,hostfwd=tcp::8888-:22 -net nic
 [20:08] <damo22> then i can shell into the box on localhost:8888
+
+附件A - 设备描述
+-device vfio-pci-nohotplug
+  x-vga=on 将硬件VGA寄存器暴露给VM, 这样在Guest-BIOS等模式可以使用物理显卡输出(只用于NVIDIA显卡)
+           对于IGD,即使x-vga=off,内部也会尝试启动VGA(除非硬件禁用了VGA)
+  x-igd-opregion=on 创建IGD的opregion副本并暴露给guest, 对于IGD,即使x-igd-opregion=off,内部也会尝试此过程
+  x-igd-gms=见IGD手册, 选择DSM大小，缺省位0。
+
+-device vfio-pci-igd-lpc-bridge 透传IGD时，IGD的vBIOS会尝试写LPC(00:1f:0)寄存器, 为防止误写QEMU自动提供了此设备

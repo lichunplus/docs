@@ -1,9 +1,11 @@
+#mount -t cifs -o username=root,password=ruijie //172.20.101.79/public /mnt/
 一、基本配置
 0. -安装centos7-minimal开发环境
     -修改grub2配置步骤：
       #vi /etc/default/grub # ...修改...
       #sudo update-grub (Debain)
       #sudo grub2-mkconfig -o /boot/grub2/grub.cfg (Rad Hat)
+      #grub2-mkconfig -o /boot/efi/EFI/centos/grub.cfg
 
 1. 禁用selinux
     -永久关闭
@@ -41,7 +43,9 @@ Samba是CIFS文件系统的一种实现，提供Linux 和 Windows系统间文件
 # systemctl enable smb
 # systemctl start smb
 # smbpasswd -a root
-\\IPAddr就可以直接访问
+windwos通过    \\IPAddr就可以直接访问
+linux通过      #mount -t cifs -o username=root,password=ruijie //172.20.101.79/public /mnt/
+
 注：
 1. 部分系统可能提示symbol krb5_get_init_creds_opt_set_pac_request, not defined
    解决办法升级krb5-libs  # yum install krb5-libs
